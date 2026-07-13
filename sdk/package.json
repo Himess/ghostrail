@@ -1,0 +1,22 @@
+{
+  "name": "@ghostrail/sdk",
+  "version": "0.1.0",
+  "description": "Confidential x402 payments over the GhostRail Payment Ledger (Arc / APS).",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "server": "tsx demo/server.ts",
+    "agent": "tsx demo/agent.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "viem": "^2.21.55"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

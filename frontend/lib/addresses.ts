@@ -1,0 +1,33 @@
+// GhostRail — Arc testnet (chainId 5042002). Multi-asset lending layer.
+// Source of truth: deployments/arc-testnet.json. Single swap surface (no env vars).
+
+export type Hex = `0x${string}`;
+
+export const CHAIN_ID = 5042002;
+export const EXPLORER = "https://testnet.arcscan.app";
+export const FAUCET = "https://faucet.circle.com";
+
+export const LEDGER = "0xe6D940a00fE26AFb44495F1D23583457f2b07b9A" as Hex;
+export const REAL_USDC = "0x3600000000000000000000000000000000000000" as Hex; // real Arc testnet USDC (6-dec)
+
+export type MarketAddrs = {
+  symbol: string; // confidential token symbol, e.g. "cUSDC"
+  underlying: Hex;
+  cToken: Hex;
+  venue: Hex;
+  router: Hex;
+  decimals: number;
+  simulated: boolean; // false = the LIVE market over real Arc USDC
+};
+
+// One generic architecture per market (ConfidentialToken + MockLendingVenue + ConfidentialVaultRouter).
+export const MARKETS: MarketAddrs[] = [
+  { symbol: "cUSDC", underlying: REAL_USDC, cToken: "0x84a11930aB28499ccEA5cb38CfbbaA9373D067d8", venue: "0xc34947e041194Ce0A0956Cb59aC2D4B33869103e", router: "0xA2E34eA6aD25675f792e48A3D75875147502853A", decimals: 6, simulated: false },
+  { symbol: "cWETH", underlying: "0x5C372888AbCB1D3A818cA2245DFE82BbD3996906", cToken: "0x63cAa81A94f467c9F350Fa3B48Ac2BCA4284EB86", venue: "0x500349Bf228323a0033798F6A9664395E3E70950", router: "0xAEF65E9527946d2C8904f9Fbfc7575F54B208A23", decimals: 18, simulated: true },
+  { symbol: "cWBTC", underlying: "0x651E1dA5E50b2EDB4cFfde70e5eC17904Da170B0", cToken: "0xFe43e265fea0EF28D7515b9dDCB21f386CBC6ba9", venue: "0x0527e51761Bb136e6ACa7B68244fc714D66e0d22", router: "0xa7cCB8f57a95007A043d017d64511C13b9d9a87b", decimals: 8, simulated: true },
+  { symbol: "cEURC", underlying: "0x1AC043FBC22e3EA1329e0A1722Ef8081Ea98E691", cToken: "0x95a7941cb98E74CD2F95b317AE8a3DFC10f3Af3a", venue: "0x6534B6ccCD4ADddC5B0017C87812d41a159300Fb", router: "0xAEB94AF55B126b69ffFA8C249E0FA5806D047402", decimals: 6, simulated: true },
+  { symbol: "cUSTB", underlying: "0x6148bd5a1288c288820AdA4b2461a0694fe4cDF7", cToken: "0x3256541a5FC01f80287934077360aeAb55C856DD", venue: "0xbE717c3B55b44FcFDf33b29288DF97779945ce12", router: "0x7Ef62e133c52e74453A5930F9D923174aBf66411", decimals: 6, simulated: true },
+];
+
+export const marketBySymbol = (s: string): MarketAddrs => MARKETS.find((m) => m.symbol === s) ?? MARKETS[0];
+export const USDC_MARKET = MARKETS[0];
