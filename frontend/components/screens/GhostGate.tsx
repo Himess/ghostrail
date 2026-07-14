@@ -3,8 +3,8 @@ import { css, cssm } from "@/lib/css";
 import { useNav } from "@/lib/nav";
 import { useMarket, useBatchEvents, useNowSec, type BatchRow } from "@/lib/hooks";
 import { fmtUnits, mmss } from "@/lib/format";
-import { marketMeta, MARKET_LIST } from "@/lib/markets";
-import { TokenIcon } from "@/components/TokenIcon";
+import { assetMeta, ASSET_LIST, venueMeta } from "@/lib/markets";
+import { TokenIcon, VenueLogo } from "@/components/TokenIcon";
 import { EXPLORER } from "@/lib/addresses";
 
 function dirLabel(d: number): { t: string; c: string; bg: string } {
@@ -23,10 +23,11 @@ function Lane({ title, sub, dark }: { title: string; sub: string; dark?: boolean
 }
 
 export function GhostGate() {
-  const { selectedMarket, setSelectedMarket } = useNav();
-  const meta = marketMeta(selectedMarket);
-  const market = useMarket(meta);
-  const rows = useBatchEvents(meta.router);
+  const { selectedMarket, setSelectedMarket, selectedVenue } = useNav();
+  const asset = assetMeta(selectedMarket);
+  const venue = venueMeta(selectedMarket, selectedVenue); // netting is per (asset, venue) router
+  const market = useMarket(venue);
+  const rows = useBatchEvents(venue.router);
   const now = useNowSec();
   const dispatchIn = market.dispatchableInAt(now);
 
@@ -43,7 +44,7 @@ export function GhostGate() {
       {/* market switcher */}
       <div style={css("display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:18px")}>
         <span style={css("font:650 11px var(--display);color:var(--ink-3);margin-right:2px")}>Market</span>
-        {MARKET_LIST.map((m) => (
+        {ASSET_LIST.map((m) => (
           <button key={m.symbol} onClick={() => setSelectedMarket(m.symbol)} style={cssm("display:inline-flex;align-items:center;gap:7px;padding:6px 11px;border-radius:999px;font:650 12px var(--display);cursor:pointer;border:1px solid var(--line)", m.symbol === selectedMarket ? { background: "var(--panel)", color: "#fff", borderColor: "var(--panel)" } : { background: "var(--surface)", color: "var(--ink-2)" })}>
             <TokenIcon token={m.symbol} size={16} />{m.symbol}
           </button>
@@ -58,7 +59,7 @@ export function GhostGate() {
           <span style={css("font:400 12px var(--display);color:var(--ink-3)")}>· because the venue lives on the PUBLIC Arc EVM</span>
         </div>
         <div style={css("display:flex;align-items:stretch;gap:12px;flex-wrap:wrap")}>
-          <Lane title="Confidential zone" sub={`Many users deposit & withdraw ${meta.symbol} privately. Individual amounts and directions stay hidden.`} dark />
+          <Lane title="Confidential zone" sub={`Many users deposit & withdraw ${asset.symbol} privately. Individual amounts and directions stay hidden.`} dark />
           <div style={css("display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:0 4px")}>
             <span style={css("font:700 10px var(--display);letter-spacing:.1em;color:var(--ink-3);writing-mode:horizontal-tb")}>NET ONLY</span>
             <svg width="34" height="24" viewBox="0 0 34 24" fill="none" stroke="var(--accent)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12h24M22 5l7 7-7 7"/></svg>
@@ -88,7 +89,7 @@ export function GhostGate() {
       {/* Recent batches table */}
       <div style={css("background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:20px 22px;margin-top:16px;box-shadow:0 1px 2px rgba(20,18,12,.03)")}>
         <div style={css("display:flex;align-items:center;justify-content:space-between;margin-bottom:12px")}>
-          <span style={css("display:inline-flex;align-items:center;gap:9px;font:750 15px var(--display);color:var(--ink)")}><TokenIcon token={meta.symbol} size={20} />Recent batches · {meta.symbol}</span>
+          <span style={css("display:inline-flex;align-items:center;gap:9px;font:750 15px var(--display);color:var(--ink)")}><TokenIcon token={asset.symbol} size={20} />Recent batches · {asset.symbol}<span style={css("display:inline-flex;align-items:center;gap:5px;font:600 11px var(--display);color:var(--ink-3)")}><VenueLogo logoKey={venue.logoKey} size={15} />{venue.name}</span></span>
           <span style={css("font:400 11.5px var(--display);color:var(--ink-3)")}>read from BatchExecuted on Arc — your real batch state</span>
         </div>
         <div style={css("display:grid;grid-template-columns:70px 1fr 130px 110px;gap:8px;padding:0 4px 10px;border-bottom:1px solid var(--line);font:650 10.5px var(--display);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)")}>
@@ -103,13 +104,13 @@ export function GhostGate() {
               <div key={r.batchId.toString()} style={css("display:grid;grid-template-columns:70px 1fr 130px 110px;gap:8px;padding:12px 4px;border-bottom:1px solid var(--line);align-items:center")}>
                 <span style={css("font:700 13px var(--mono);color:var(--ink)")}>#{r.batchId.toString()}</span>
                 <span style={cssm(`justify-self:start;font:650 11.5px var(--display);padding:3px 10px;border-radius:999px;color:${d.c};background:${d.bg}`)}>{d.t}</span>
-                <span style={css("text-align:right;font:700 13.5px var(--mono);color:var(--ink);font-variant-numeric:tabular-nums")}>{r.netDirection === 0 ? "—" : fmtUnits(r.netAmount, meta.decimals)}</span>
+                <span style={css("text-align:right;font:700 13.5px var(--mono);color:var(--ink);font-variant-numeric:tabular-nums")}>{r.netDirection === 0 ? "—" : fmtUnits(r.netAmount, asset.decimals)}</span>
                 <span style={css("text-align:right;font:600 13px var(--mono);color:var(--ink-2);font-variant-numeric:tabular-nums")}>{(Number(r.sharePrice) / 1e6).toFixed(4)}</span>
               </div>
             );
           })
         )}
-        <a href={`${EXPLORER}/address/${meta.router}`} target="_blank" rel="noreferrer" style={css("display:inline-block;margin-top:12px;font:600 12px var(--display);color:#8a6d00;text-decoration:none")}>View all batches on Arcscan →</a>
+        <a href={`${EXPLORER}/address/${venue.router}`} target="_blank" rel="noreferrer" style={css("display:inline-block;margin-top:12px;font:600 12px var(--display);color:#8a6d00;text-decoration:none")}>View all batches on Arcscan →</a>
       </div>
     </div>
   );

@@ -5,8 +5,8 @@ import { useConfToken, useLedger, useMarket, useAllMarkets, useNowSec } from "@/
 import { compact, fmtUnits, mmss } from "@/lib/format";
 import { WhatsPrivate } from "@/components/Privacy";
 import { TokenIcon } from "@/components/TokenIcon";
-import { MARKET_LIST } from "@/lib/markets";
-import { USDC_MARKET } from "@/lib/addresses";
+import { ASSET_LIST } from "@/lib/markets";
+import { USDC_ASSET } from "@/lib/addresses";
 
 const PrivateBadge = () => (
   <span style={css("display:inline-flex;align-items:center;gap:7px;padding:7px 13px;border-radius:999px;background:#f5f3ec;border:1px solid var(--line);color:var(--ink-2);font:600 11.5px var(--display)")}>
@@ -22,18 +22,18 @@ const Label = ({ t }: { t: string }) => <span style={css("font:650 11px var(--di
 
 export function Dashboard() {
   const { go, openMarket } = useNav();
-  const usdc = useConfToken(USDC_MARKET.cToken);
-  const market = useMarket(USDC_MARKET);
+  const usdc = useConfToken(USDC_ASSET.cToken);
+  const market = useMarket(USDC_ASSET.venues[0]);
   const ledger = useLedger();
   const { bySymbol } = useAllMarkets();
   const now = useNowSec();
   const dispatchIn = market.dispatchableInAt(now);
   const solvent = ledger.solvency ? ledger.solvency.backing >= ledger.solvency.internalSum : true;
 
-  // TVL across markets normalized to whole underlying units (markets have different decimals + assets).
-  const tvlNorm = MARKET_LIST.reduce((acc, m) => acc + Number(bySymbol[m.symbol]?.totalAssets ?? 0n) / 10 ** m.decimals, 0);
-  const liveCount = MARKET_LIST.filter((m) => !m.simulated).length;
-  const simCount = MARKET_LIST.length - liveCount;
+  // TVL across assets normalized to whole underlying units (assets have different decimals + underlyings).
+  const tvlNorm = ASSET_LIST.reduce((acc, a) => acc + Number(bySymbol[a.symbol]?.totalAssets ?? 0n) / 10 ** a.decimals, 0);
+  const liveCount = ASSET_LIST.filter((a) => a.live).length;
+  const simCount = ASSET_LIST.length - liveCount;
 
   return (
     <div style={css("max-width:1200px;width:100%")}>
@@ -56,12 +56,12 @@ export function Dashboard() {
             <span style={css("font:800 31px var(--display);letter-spacing:-.02em;color:var(--ink);font-variant-numeric:tabular-nums")}>{compact(tvlNorm)}</span>
             <span style={css("font:600 13px var(--display);color:var(--ink-3)")}>units</span>
           </div>
-          <span style={css("font:400 12px/1.45 var(--display);color:var(--ink-3)")}>pooled across {MARKET_LIST.length} markets · normalized to whole underlying units</span>
+          <span style={css("font:400 12px/1.45 var(--display);color:var(--ink-3)")}>pooled across {ASSET_LIST.length} assets · normalized to whole underlying units</span>
         </Card>
         <Card>
           <Label t="Markets" />
           <div style={css("display:flex;align-items:baseline;gap:7px")}>
-            <span style={css("font:750 32px var(--display);letter-spacing:-.02em;color:var(--ink);line-height:1;font-variant-numeric:tabular-nums")}>{MARKET_LIST.length}</span>
+            <span style={css("font:750 32px var(--display);letter-spacing:-.02em;color:var(--ink);line-height:1;font-variant-numeric:tabular-nums")}>{ASSET_LIST.length}</span>
             <span style={css("font:600 13px var(--display);color:var(--ink-3)")}>assets</span>
           </div>
           <span style={css("display:inline-flex;align-items:center;gap:9px;font:400 12.5px var(--display);color:var(--ink-3)")}>
@@ -109,19 +109,22 @@ export function Dashboard() {
             <h3 style={css("margin:0;font:750 17px var(--display);letter-spacing:-.01em;color:var(--ink)")}>Markets</h3>
             <button onClick={() => go("markets")} style={css("font:600 12px var(--display);color:#8a6d00;background:none;border:none;cursor:pointer")}>View all →</button>
           </div>
-          {MARKET_LIST.map((m) => (
-            <button key={m.symbol} onClick={() => openMarket(m.symbol)} style={css("display:flex;align-items:center;gap:12px;background:none;border:none;text-align:left;cursor:pointer;padding:10px 8px;border-radius:12px;border-bottom:1px solid var(--line)")}>
-              <TokenIcon token={m.symbol} size={30} />
-              <div style={css("display:flex;flex-direction:column;flex:1;min-width:0")}>
-                <span style={css("font:650 13.5px var(--display);color:var(--ink)")}>{m.label}</span>
-                <span style={css("font:400 11.5px var(--mono);color:var(--ink-3)")}>{fmtUnits(bySymbol[m.symbol]?.totalAssets ?? 0n, m.decimals, { compact: true })} {m.underlyingSymbol} · via {m.venueName}</span>
-              </div>
-              <div style={css("display:flex;flex-direction:column;align-items:flex-end;gap:3px")}>
-                <span style={css("font:750 15px var(--display);color:var(--ink);font-variant-numeric:tabular-nums")}>{m.apy}</span>
-                <span style={cssm("font:600 9.5px var(--display);letter-spacing:.04em;padding:2px 7px;border-radius:999px", m.simulated ? { color: "#8a6d00", background: "#fbf1dc" } : { color: "#1c7a4f", background: "var(--green-bg)" })}>{m.simulated ? "SIM" : "LIVE"}</span>
-              </div>
-            </button>
-          ))}
+          {ASSET_LIST.map((a) => {
+            const v = a.venues[0]; // primary venue (Morpho) represents the asset in this compact list
+            return (
+              <button key={a.symbol} onClick={() => openMarket(a.symbol)} style={css("display:flex;align-items:center;gap:12px;background:none;border:none;text-align:left;cursor:pointer;padding:10px 8px;border-radius:12px;border-bottom:1px solid var(--line)")}>
+                <TokenIcon token={a.symbol} size={30} />
+                <div style={css("display:flex;flex-direction:column;flex:1;min-width:0")}>
+                  <span style={css("font:650 13.5px var(--display);color:var(--ink)")}>{a.label}</span>
+                  <span style={css("font:400 11.5px var(--mono);color:var(--ink-3)")}>{fmtUnits(bySymbol[a.symbol]?.totalAssets ?? 0n, a.decimals, { compact: true })} {a.underlyingSymbol} · via {v.name}</span>
+                </div>
+                <div style={css("display:flex;flex-direction:column;align-items:flex-end;gap:3px")}>
+                  <span style={css("font:750 15px var(--display);color:var(--ink);font-variant-numeric:tabular-nums")}>{v.apy}</span>
+                  <span style={cssm("font:600 9.5px var(--display);letter-spacing:.04em;padding:2px 7px;border-radius:999px", a.live ? { color: "#1c7a4f", background: "var(--green-bg)" } : { color: "#8a6d00", background: "#fbf1dc" })}>{a.live ? "LIVE" : "SIM"}</span>
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>

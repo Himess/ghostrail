@@ -8,7 +8,7 @@ import { TokenIcon } from "@/components/TokenIcon";
 import { useConfToken } from "@/lib/hooks";
 import { fmtUnits, toUnits, errMsg } from "@/lib/format";
 import { FAUCET, type Hex } from "@/lib/addresses";
-import { marketMeta, MARKET_LIST } from "@/lib/markets";
+import { assetMeta, ASSET_LIST } from "@/lib/markets";
 import { ctokenAbi, erc20Abi } from "@/lib/abis";
 
 function StepNum({ n }: { n: number }) {
@@ -24,7 +24,7 @@ const Amber = ({ children }: { children: React.ReactNode }) => (
 export function Faucet() {
   const { address, isConnected } = useAccount();
   const { selectedMarket, setSelectedMarket, openMarket, go } = useNav();
-  const meta = marketMeta(selectedMarket);
+  const meta = assetMeta(selectedMarket); // shield/unshield is venue-agnostic — Faucet works at the asset level
   const push = useToast();
   const pub = usePublicClient();
   const conf = useConfToken(meta.cToken);
@@ -80,7 +80,7 @@ export function Faucet() {
       {/* market switcher */}
       <div style={css("display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:18px")}>
         <span style={css("font:650 11px var(--display);color:var(--ink-3);margin-right:2px")}>Market</span>
-        {MARKET_LIST.map((m) => (
+        {ASSET_LIST.map((m) => (
           <button key={m.symbol} onClick={() => setSelectedMarket(m.symbol)} style={cssm("display:inline-flex;align-items:center;gap:7px;padding:6px 11px;border-radius:999px;font:650 12px var(--display);cursor:pointer;border:1px solid var(--line)", m.symbol === selectedMarket ? { background: "var(--panel)", color: "#fff", borderColor: "var(--panel)" } : { background: "var(--surface)", color: "var(--ink-2)" })}>
             <TokenIcon token={m.symbol} size={16} />{m.symbol}
           </button>
@@ -91,9 +91,9 @@ export function Faucet() {
       <div style={css("display:flex;flex-direction:column;gap:16px")}>
         {/* Step 1 — get (USDC) or mint (simulated) */}
         <div style={css("background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:22px 24px;display:flex;flex-direction:column;gap:14px")}>
-          <div style={css("display:flex;align-items:center;gap:13px")}><StepNum n={1} /><div style={css("display:flex;flex-direction:column")}><span style={css("font:750 16px var(--display);color:var(--ink)")}>{meta.simulated ? `Mint test ${meta.underlyingSymbol}` : "Get testnet USDC"}</span><span style={css("font:400 12.5px var(--display);color:var(--ink-3)")}>{meta.simulated ? `${meta.label} is a simulated market — mint the mock underlying` : "Arc testnet USDC is real — grab it from Circle's faucet"}</span></div></div>
-          <Amber>This is a <b style={css("font-weight:700")}>PUBLIC STEP.</b> {meta.simulated ? `Minting and holding ${meta.underlyingSymbol} is transparent on Arc` : "Getting and holding USDC is transparent on Arc"} — shield it in step 2 to convert into a private balance. Gas on Arc is paid in USDC.</Amber>
-          {meta.simulated ? (
+          <div style={css("display:flex;align-items:center;gap:13px")}><StepNum n={1} /><div style={css("display:flex;flex-direction:column")}><span style={css("font:750 16px var(--display);color:var(--ink)")}>{!meta.live ? `Mint test ${meta.underlyingSymbol}` : "Get testnet USDC"}</span><span style={css("font:400 12.5px var(--display);color:var(--ink-3)")}>{!meta.live ? `${meta.label} is a simulated market — mint the mock underlying` : "Arc testnet USDC is real — grab it from Circle's faucet"}</span></div></div>
+          <Amber>This is a <b style={css("font-weight:700")}>PUBLIC STEP.</b> {!meta.live ? `Minting and holding ${meta.underlyingSymbol} is transparent on Arc` : "Getting and holding USDC is transparent on Arc"} — shield it in step 2 to convert into a private balance. Gas on Arc is paid in USDC.</Amber>
+          {!meta.live ? (
             <div style={css("display:flex;align-items:center;gap:12px;flex-wrap:wrap")}>
               <div style={css("display:flex;align-items:center;gap:9px;flex:1;min-width:220px;background:var(--surface-2);border:1px solid var(--line);border-radius:13px;padding:11px 14px")}>
                 <TokenIcon token={meta.underlyingSymbol} size={26} />

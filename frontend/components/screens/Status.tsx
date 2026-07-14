@@ -3,8 +3,10 @@ import { css, cssm } from "@/lib/css";
 import { useConfToken, useLedger, useMarket, useAllMarkets, useNowSec } from "@/lib/hooks";
 import { compact, fmtUnits, mmss } from "@/lib/format";
 import { TokenIcon } from "@/components/TokenIcon";
-import { MARKET_LIST } from "@/lib/markets";
-import { EXPLORER, USDC_MARKET } from "@/lib/addresses";
+import { ASSET_LIST } from "@/lib/markets";
+import { EXPLORER, USDC_ASSET } from "@/lib/addresses";
+
+const USDC_VENUE = USDC_ASSET.venues[0]; // live (USDC, Morpho) — the market whose keeper/solvency Status shows
 
 function Card({ children }: { children: React.ReactNode }) {
   return <div style={css("background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:22px 24px;display:flex;flex-direction:column;gap:16px;box-shadow:0 1px 2px rgba(20,18,12,.03)")}>{children}</div>;
@@ -27,9 +29,9 @@ function Node({ state, label, sub }: { state: "done" | "active" | "todo"; label:
 }
 
 export function Status() {
-  const usdc = useConfToken(USDC_MARKET.cToken);
+  const usdc = useConfToken(USDC_ASSET.cToken);
   const ledger = useLedger();
-  const market = useMarket(USDC_MARKET);
+  const market = useMarket(USDC_VENUE);
   const { bySymbol } = useAllMarkets();
   const now = useNowSec();
   const dispatchIn = market.dispatchableInAt(now);
@@ -60,7 +62,7 @@ export function Status() {
         </Card>
         <Card>
           <Label t="USDC vault solvency" />
-          <div style={css("display:flex;align-items:baseline;gap:7px")}><span style={css("font:750 24px var(--display);color:var(--ink);font-variant-numeric:tabular-nums")}>{fmtUnits(market.totalAssets, USDC_MARKET.decimals, { compact: true })}</span><span style={css("font:600 12px var(--mono);color:var(--ink-3)")}>backing</span></div>
+          <div style={css("display:flex;align-items:baseline;gap:7px")}><span style={css("font:750 24px var(--display);color:var(--ink);font-variant-numeric:tabular-nums")}>{fmtUnits(market.totalAssets, USDC_ASSET.decimals, { compact: true })}</span><span style={css("font:600 12px var(--mono);color:var(--ink-3)")}>backing</span></div>
           <span style={css(`display:inline-flex;align-items:center;gap:6px;font:400 12.5px var(--display);color:var(--ink-3)`)}><span style={css(`width:7px;height:7px;border-radius:50%;background:${routerSolvent ? "var(--green)" : "var(--red)"}`)} />{market.totalShares.toString()} shares · {routerSolvent ? "solvent" : "review"}</span>
         </Card>
         <Card>
@@ -79,14 +81,14 @@ export function Status() {
         <div style={css("display:grid;grid-template-columns:1fr 120px 120px 90px;gap:8px;padding:0 4px 10px;border-bottom:1px solid var(--line);font:650 10.5px var(--display);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)")}>
           <span>Market</span><span style={css("text-align:right")}>Backing (TVL)</span><span style={css("text-align:right")}>Shares</span><span style={css("text-align:right")}>State</span>
         </div>
-        {MARKET_LIST.map((m) => {
-          const agg = bySymbol[m.symbol] ?? { totalAssets: 0n, totalShares: 0n };
+        {ASSET_LIST.map((a) => {
+          const agg = bySymbol[a.symbol] ?? { totalAssets: 0n, totalShares: 0n };
           return (
-            <div key={m.symbol} style={css("display:grid;grid-template-columns:1fr 120px 120px 90px;gap:8px;padding:12px 4px;border-bottom:1px solid var(--line);align-items:center")}>
-              <span style={css("display:inline-flex;align-items:center;gap:9px;font:650 13px var(--display);color:var(--ink)")}><TokenIcon token={m.symbol} size={22} />{m.symbol}</span>
-              <span style={css("text-align:right;font:700 13px var(--mono);color:var(--ink);font-variant-numeric:tabular-nums")}>{fmtUnits(agg.totalAssets, m.decimals, { compact: true })}</span>
+            <div key={a.symbol} style={css("display:grid;grid-template-columns:1fr 120px 120px 90px;gap:8px;padding:12px 4px;border-bottom:1px solid var(--line);align-items:center")}>
+              <span style={css("display:inline-flex;align-items:center;gap:9px;font:650 13px var(--display);color:var(--ink)")}><TokenIcon token={a.symbol} size={22} />{a.symbol}</span>
+              <span style={css("text-align:right;font:700 13px var(--mono);color:var(--ink);font-variant-numeric:tabular-nums")}>{fmtUnits(agg.totalAssets, a.decimals, { compact: true })}</span>
               <span style={css("text-align:right;font:600 13px var(--mono);color:var(--ink-2);font-variant-numeric:tabular-nums")}>{agg.totalShares.toString()}</span>
-              <span style={cssm("justify-self:end;font:650 10.5px var(--display);padding:3px 9px;border-radius:999px", m.simulated ? { color: "#8a6d00", background: "#fbf1dc" } : { color: "#1c7a4f", background: "var(--green-bg)" })}>{m.simulated ? "sim" : "live"}</span>
+              <span style={cssm("justify-self:end;font:650 10.5px var(--display);padding:3px 9px;border-radius:999px", a.live ? { color: "#1c7a4f", background: "var(--green-bg)" } : { color: "#8a6d00", background: "#fbf1dc" })}>{a.live ? "live" : "sim"}</span>
             </div>
           );
         })}
@@ -110,7 +112,7 @@ export function Status() {
             <Node state="active" label="APS enclave" sub="Arc Privacy Sector not yet live — privacy is notional on this preview" />
             <Node state="todo" label="Remote attestation" sub="enclave measurement + view-key enforcement (arrives with APS)" />
           </div>
-          <a href={`${EXPLORER}/address/${USDC_MARKET.router}`} target="_blank" rel="noreferrer" style={css("font:600 12.5px var(--display);color:#8a6d00;text-decoration:none")}>View the USDC router on Arcscan →</a>
+          <a href={`${EXPLORER}/address/${USDC_VENUE.router}`} target="_blank" rel="noreferrer" style={css("font:600 12.5px var(--display);color:#8a6d00;text-decoration:none")}>View the USDC router on Arcscan →</a>
         </div>
       </div>
     </div>

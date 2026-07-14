@@ -10,34 +10,29 @@ import {ConfidentialVaultRouter} from "../src/ConfidentialVaultRouter.sol";
 import {MockERC20} from "../src/mocks/MockERC20.sol";
 import {MockLendingVenue} from "../src/mocks/MockLendingVenue.sol";
 
-/// @notice Deploys the MULTI-ASSET GhostRail lending layer to Arc public testnet. The USDC market wraps
-///         the REAL Arc testnet USDC (`simulated:false`); the other markets (WETH/WBTC/EURC/Treasury) wrap
-///         freshly deployed mock underlyings because those assets/venues aren't on Arc testnet yet
-///         (`simulated:true`). One generic architecture per market: ConfidentialToken + MockLendingVenue +
-///         ConfidentialVaultRouter. All config comes from env vars; the script reverts naming any missing
-///         one. Confidentiality is NOTIONAL on Arc testnet (APS not live) — protocol logic + real USDC are live.
+/// @notice Deploys the multi-asset, multi-venue confidential lending layer to Arc public testnet. Per
+///         ASSET: one shared `ConfidentialToken`. Per (asset, VENUE): a `MockLendingVenue` +
+///         `ConfidentialVaultRouter` — so each asset can route to more than one venue (Morpho, Aave), like
+///         a real confidential lending aggregator. The (USDC, Morpho) market wraps the REAL Arc testnet
+///         USDC and is LIVE; every other (asset, venue) pair is `simulated:true` (mock underlying/venue).
+///         Confidentiality is NOTIONAL on Arc testnet (APS not live). Env-driven; reverts on missing vars.
 ///
 ///  Run:  forge script script/DeployArcTestnet.s.sol --rpc-url $ARC_TESTNET_RPC --broadcast
 contract DeployArcTestnet is Script {
-    struct Market {
-        string symbol; // confidential token symbol, e.g. "cWETH"
-        address underlying;
-        address cToken;
-        address venue;
-        address router;
-        uint8 decimals;
-        bool simulated;
-    }
-
     uint64 batchWindow;
     address auditor;
 
+    // Two venues per asset. (USDC, Morpho) is the single LIVE market.
+    string[2] VENUES = ["Morpho", "Aave"];
+
+    string assetsJson; // accumulated during broadcast
+
     function run() external {
-        uint256 deployerPk = _envUintReq("DEPLOYER_PRIVATE_KEY");
+        uint256 pk = _envUintReq("DEPLOYER_PRIVATE_KEY");
         uint256 expectedChainId = _envUintReq("ARC_TESTNET_CHAIN_ID");
         address usdcAddr = _envAddrReq("ARC_USDC_ADDRESS");
 
-        address deployer = vm.addr(deployerPk);
+        address deployer = vm.addr(pk);
         auditor = vm.envOr("ARC_AUDITOR_ADDRESS", deployer);
         batchWindow = uint64(vm.envOr("ROUTER_BATCH_WINDOW", uint256(60)));
         uint64 withdrawWindow = uint64(vm.envOr("LEDGER_WITHDRAW_WINDOW", uint256(3600)));
@@ -46,103 +41,100 @@ contract DeployArcTestnet is Script {
         require(block.chainid == expectedChainId, "Connected chain != ARC_TESTNET_CHAIN_ID");
         require(usdcAddr.code.length > 0, "ARC_USDC_ADDRESS is not a contract on this chain");
 
-        console2.log("== GhostRail multi-asset -> Arc testnet ==");
-        console2.log("chainId  :", block.chainid);
+        console2.log("== GhostRail multi-asset x multi-venue -> Arc testnet ==");
         console2.log("deployer :", deployer);
-        console2.log("USDC     :", usdcAddr, "(real Arc testnet USDC)");
 
-        vm.startBroadcast(deployerPk);
+        // asset definitions: symbol, underlyingName, underlyingSym, decimals, live(real USDC)
+        string[5] memory syms = ["cUSDC", "cWETH", "cWBTC", "cEURC", "cUSTB"];
+        string[5] memory uNames =
+            ["", "Wrapped Ether", "Wrapped Bitcoin", "Euro Coin", "Tokenized Treasury"];
+        string[5] memory uSyms = ["USDC", "WETH", "WBTC", "EURC", "USTB"];
+        uint8[5] memory decs = [6, 18, 8, 6, 6];
 
-        Market[] memory markets = new Market[](5);
-        // Market 0 — the LIVE USDC market over the real Arc testnet USDC (never a mock).
-        markets[0] = _market("cUSDC", "", "", 0, false, usdcAddr);
-        // Payments ledger sits on the USDC confidential token (secondary module).
-        ConfidentialPaymentLedger ledger = new ConfidentialPaymentLedger(ConfidentialToken(markets[0].cToken), withdrawWindow);
-        // Simulated markets — assets/venues not yet on Arc testnet; mock underlyings, clearly tagged.
-        markets[1] = _market("cWETH", "Wrapped Ether", "WETH", 18, true, address(0));
-        markets[2] = _market("cWBTC", "Wrapped Bitcoin", "WBTC", 8, true, address(0));
-        markets[3] = _market("cEURC", "Euro Coin", "EURC", 6, true, address(0));
-        markets[4] = _market("cUSTB", "Tokenized Treasury", "USTB", 6, true, address(0));
+        vm.startBroadcast(pk);
+
+        address topCUSDC;
+        address topVenue;
+        address topRouter;
+        ConfidentialPaymentLedger ledger;
+
+        for (uint256 i; i < 5; ++i) {
+            bool assetLive = (i == 0);
+            address underlying = assetLive ? usdcAddr : address(new MockERC20(uNames[i], uSyms[i], decs[i]));
+            ConfidentialToken cToken = new ConfidentialToken(IERC20(underlying)); // shared across the asset's venues
+            if (i == 0) ledger = new ConfidentialPaymentLedger(cToken, withdrawWindow);
+
+            string memory venuesJson;
+            for (uint256 v; v < 2; ++v) {
+                bool live = (i == 0 && v == 0); // only (USDC, Morpho)
+                MockLendingVenue venue = new MockLendingVenue(IERC20(underlying));
+                ConfidentialVaultRouter router =
+                    new ConfidentialVaultRouter(cToken, IERC20(underlying), venue, auditor, batchWindow);
+                if (live) {
+                    topCUSDC = address(cToken);
+                    topVenue = address(venue);
+                    topRouter = address(router);
+                }
+                venuesJson = string.concat(
+                    venuesJson, _venueJson(VENUES[v], address(venue), address(router), !live), v == 0 ? ",\n" : "\n"
+                );
+            }
+            assetsJson = string.concat(
+                assetsJson,
+                _assetJson(syms[i], underlying, address(cToken), decs[i], assetLive, venuesJson),
+                i < 4 ? ",\n" : "\n"
+            );
+            console2.log(string.concat("  ", syms[i], assetLive ? " (LIVE underlying)" : " (simulated)"), address(cToken));
+        }
 
         vm.stopBroadcast();
 
-        for (uint256 i; i < markets.length; ++i) {
-            console2.log(
-                string.concat("  ", markets[i].symbol, markets[i].simulated ? " (simulated)" : " (LIVE USDC)"),
-                markets[i].router
-            );
-        }
         console2.log("  ledger :", address(ledger));
-
-        _writeJson(usdcAddr, address(ledger), markets);
-
+        _writeJson(usdcAddr, address(ledger), topCUSDC, topVenue, topRouter);
         if (bytes(explorer).length > 0) {
-            console2.log("");
-            for (uint256 i; i < markets.length; ++i) {
-                console2.log(string.concat("  ", markets[i].symbol, " router: ", explorer, "/address/", vm.toString(markets[i].router)));
-            }
+            console2.log(string.concat("  live USDC/Morpho router: ", explorer, "/address/", vm.toString(topRouter)));
         }
-        console2.log("");
-        console2.log("Wrote deployments/arc-testnet.json. NOTE: privacy is notional until APS ships.");
+        console2.log("Wrote deployments/arc-testnet.json (assets x venues). Privacy notional until APS.");
     }
 
-    /// @dev Deploy one market's stack. For the live market pass the real underlying; for simulated markets
-    ///      pass a mock name/symbol/decimals and address(0) — a fresh MockERC20 is deployed.
-    function _market(
+    function _venueJson(string memory name, address venue, address router, bool simulated)
+        internal
+        pure
+        returns (string memory)
+    {
+        return string.concat(
+            '        { "name": "', name, '", "venue": "', vm.toString(venue), '", "router": "', vm.toString(router),
+            '", "simulated": ', simulated ? "true" : "false", " }"
+        );
+    }
+
+    function _assetJson(
         string memory symbol,
-        string memory underlyingName,
-        string memory underlyingSym,
+        address underlying,
+        address cToken,
         uint8 dec,
-        bool simulated,
-        address realUnderlying
-    ) internal returns (Market memory m) {
-        address u = realUnderlying;
-        if (simulated) u = address(new MockERC20(underlyingName, underlyingSym, dec));
-        ConfidentialToken ct = new ConfidentialToken(IERC20(u));
-        MockLendingVenue venue = new MockLendingVenue(IERC20(u));
-        ConfidentialVaultRouter router = new ConfidentialVaultRouter(ct, IERC20(u), venue, auditor, batchWindow);
-        m = Market({
-            symbol: symbol,
-            underlying: u,
-            cToken: address(ct),
-            venue: address(venue),
-            router: address(router),
-            decimals: ct.decimals(),
-            simulated: simulated
-        });
+        bool live,
+        string memory venuesJson
+    ) internal pure returns (string memory) {
+        return string.concat(
+            '    {\n      "symbol": "', symbol, '", "underlying": "', vm.toString(underlying),
+            '", "cToken": "', vm.toString(cToken), '", "decimals": ', vm.toString(dec),
+            ', "live": ', live ? "true" : "false", ',\n      "venues": [\n', venuesJson, "      ]\n    }"
+        );
     }
 
-    function _writeJson(address usdcAddr, address ledger, Market[] memory markets) internal {
-        Market memory m0 = markets[0];
-        // Top-level USDC-market keys kept for the smoke script + primary market.
+    function _writeJson(address usdcAddr, address ledger, address cUSDC, address venue, address router) internal {
         string memory j = "{\n";
         j = string.concat(j, '  "chainId": ', vm.toString(block.chainid), ",\n");
         j = string.concat(j, '  "auditor": "', vm.toString(auditor), '",\n');
         j = string.concat(j, '  "ledger": "', vm.toString(ledger), '",\n');
         j = string.concat(j, '  "usdc": "', vm.toString(usdcAddr), '",\n');
-        j = string.concat(j, '  "cUSDC": "', vm.toString(m0.cToken), '",\n');
-        j = string.concat(j, '  "venue": "', vm.toString(m0.venue), '",\n');
-        j = string.concat(j, '  "vaultRouter": "', vm.toString(m0.router), '",\n');
-        j = string.concat(j, '  "markets": [\n');
-        for (uint256 i; i < markets.length; ++i) {
-            j = string.concat(j, _marketJson(markets[i]), i + 1 < markets.length ? ",\n" : "\n");
-        }
-        j = string.concat(j, "  ]\n}\n");
+        // top-level LIVE USDC/Morpho market (smoke script + primary)
+        j = string.concat(j, '  "cUSDC": "', vm.toString(cUSDC), '",\n');
+        j = string.concat(j, '  "venue": "', vm.toString(venue), '",\n');
+        j = string.concat(j, '  "vaultRouter": "', vm.toString(router), '",\n');
+        j = string.concat(j, '  "assets": [\n', assetsJson, "  ]\n}\n");
         vm.writeFile("./deployments/arc-testnet.json", j);
-    }
-
-    function _marketJson(Market memory m) internal pure returns (string memory) {
-        return string.concat(
-            "    { ",
-            '"symbol": "', m.symbol, '", ',
-            '"underlying": "', vm.toString(m.underlying), '", ',
-            '"cToken": "', vm.toString(m.cToken), '", ',
-            '"venue": "', vm.toString(m.venue), '", ',
-            '"router": "', vm.toString(m.router), '", ',
-            '"decimals": ', vm.toString(m.decimals), ", ",
-            '"simulated": ', m.simulated ? "true" : "false",
-            " }"
-        );
     }
 
     function _envAddrReq(string memory k) internal view returns (address v) {

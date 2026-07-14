@@ -2,14 +2,15 @@
 import { useEffect, useState } from "react";
 import { useAccount, usePublicClient, useReadContract, useReadContracts } from "wagmi";
 import { ctokenAbi, ledgerAbi, routerAbi } from "./abis";
-import { LEDGER, MARKETS, type Hex, type MarketAddrs } from "./addresses";
+import { ASSETS, LEDGER, type Hex, type VenueAddrs } from "./addresses";
 
 // All reads are plain eth_calls. "Gated" reads (a value only the owner/viewer may read) are issued with the
 // connected wallet as `account`, so on-chain msg.sender is the honest owner — the same path the app documents.
-// The dots→value reveal is a pure client toggle in the screens; nothing here decrypts or signs.
+// The dots→value reveal is gated in the screens by an EIP-712 ownership signature (see lib/useReveal); nothing
+// here decrypts.
 //
-// The data layer is parameterized by market: every hook that touches a router/cToken takes the address, so the
-// five markets (cUSDC live + cWETH/cWBTC/cEURC/cUSTB simulated) all share one architecture.
+// The data layer is parameterized by (asset, venue): every hook that touches a router/cToken takes the address.
+// A cToken is per ASSET (shielded wrapper), a router is per (asset, VENUE) — Morpho / Aave each have their own.
 
 const LEDGER_C = { address: LEDGER, abi: ledgerAbi } as const;
 
@@ -73,8 +74,9 @@ export function useLedger() {
   };
 }
 
-// ---- Confidential Vault Router for ONE market (pull-based) ----
-export function useMarket(m: MarketAddrs) {
+// ---- Confidential Vault Router for ONE (asset, venue) market (pull-based) ----
+// Pass a venue (VenueAddrs / VenueMeta) — this reads its router.
+export function useMarket(m: VenueAddrs) {
   const { address } = useAccount();
   const router = { address: m.router, abi: routerAbi } as const;
   const { data: agg, refetch: refetchAgg } = useReadContracts({
@@ -129,19 +131,20 @@ export function useMarket(m: MarketAddrs) {
   };
 }
 
-// ---- All markets at once (Markets grid): each router's TVL (totalAssets) + totalShares in one batch ----
+// ---- Every asset at once (Markets grid / Dashboard / Status), keyed by asset symbol ----
+// Asset-level aggregate = the asset's primary (live) venue router, venues[0] (Morpho). One batch call.
 export type MarketAgg = { totalAssets: bigint; totalShares: bigint };
 export function useAllMarkets(): { bySymbol: Record<string, MarketAgg>; refetch: () => void } {
   const { data, refetch } = useReadContracts({
-    contracts: MARKETS.flatMap((m) => [
-      { address: m.router, abi: routerAbi, functionName: "totalAssets" } as const,
-      { address: m.router, abi: routerAbi, functionName: "totalShares" } as const,
+    contracts: ASSETS.flatMap((a) => [
+      { address: a.venues[0].router, abi: routerAbi, functionName: "totalAssets" } as const,
+      { address: a.venues[0].router, abi: routerAbi, functionName: "totalShares" } as const,
     ]),
     query: { refetchInterval: 15000 },
   });
   const bySymbol: Record<string, MarketAgg> = {};
-  MARKETS.forEach((m, i) => {
-    bySymbol[m.symbol] = {
+  ASSETS.forEach((a, i) => {
+    bySymbol[a.symbol] = {
       totalAssets: (data?.[i * 2]?.result as bigint | undefined) ?? 0n,
       totalShares: (data?.[i * 2 + 1]?.result as bigint | undefined) ?? 0n,
     };

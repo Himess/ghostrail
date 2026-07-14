@@ -271,17 +271,16 @@ GhostRail is **deployed and smoke-tested on Arc public testnet** (chainId `50420
 USDC `0x3600000000000000000000000000000000000000`. Deployer `0xF505e2E71df58D7244189072008f25f6b6aaE5ae`.
 Full details + tx hashes: [`deployments/arc-testnet-smoke.md`](./deployments/arc-testnet-smoke.md).
 
-Deployed **multi-asset** — 5 markets, each `ConfidentialToken` + `MockLendingVenue` + pull-based
-`ConfidentialVaultRouter`:
+Deployed **multi-asset × multi-venue** — **5 assets × 2 venues (Morpho / Aave) = 10 markets**. Each asset
+shares one `ConfidentialToken`; each (asset, venue) is its own `MockLendingVenue` + pull-based
+`ConfidentialVaultRouter`. Only **cUSDC · Morpho** is LIVE; full addresses in `deployments/arc-testnet.json`.
 
 | Market (router) | Address | Status |
 |---|---|---|
-| **cUSDC** | `0xA2E34eA6aD25675f792e48A3D75875147502853A` | LIVE (real USDC) |
-| cWETH (18-dec) | `0xAEF65E9527946d2C8904f9Fbfc7575F54B208A23` | simulated |
-| cWBTC (8-dec) | `0xa7cCB8f57a95007A043d017d64511C13b9d9a87b` | simulated |
-| cEURC | `0xAEB94AF55B126b69ffFA8C249E0FA5806D047402` | simulated |
-| cUSTB | `0x7Ef62e133c52e74453A5930F9D923174aBf66411` | simulated |
-| PaymentLedger (secondary) | `0xe6D940a00fE26AFb44495F1D23583457f2b07b9A` | — |
+| **cUSDC · Morpho** | `0xCEDA3eE062a10Dd274f4a243a0601E434063d024` | LIVE (real USDC) |
+| cUSDC · Aave | `0x4BDC81797936fccB85BA1dF03E0e314ffa7E5EAd` | simulated |
+| cWETH / cWBTC / cEURC / cUSTB · Morpho + Aave | see `arc-testnet.json` | simulated |
+| PaymentLedger (secondary) | `0x3957406ca80C8176C557DDCFEE83D482cFB241E1` | — |
 
 **Live smoke result:** shield 2 USDC → fund 1 → confidential pay 0.5 → deposit 1 → `executeBatch` all
 landed on-chain (8 tx hashes recorded); post-run reads: `verifyReceipt → true`, `checkSolvency →

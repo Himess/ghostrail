@@ -3,27 +3,32 @@ import { useState } from "react";
 import { useAccount, usePublicClient, useReadContract, useWriteContract } from "wagmi";
 import { css, cssm } from "@/lib/css";
 import { useToast } from "@/components/Toast";
-import { TokenIcon } from "@/components/TokenIcon";
+import { TokenIcon, VenueLogo, CuratorChip } from "@/components/TokenIcon";
 import { useNav } from "@/lib/nav";
 import { useConfToken, useMarket, useNowSec } from "@/lib/hooks";
+import { useReveal, RevealNote } from "@/lib/useReveal";
 import { DOTS, fmtUnits, toUnits, mmss, errMsg } from "@/lib/format";
-import { marketMeta, MARKET_LIST, type MarketMeta } from "@/lib/markets";
-import { EXPLORER } from "@/lib/addresses";
+import { assetMeta, ASSET_LIST, venueMeta, type AssetMeta, type VenueMeta } from "@/lib/markets";
+import { EXPLORER, type Hex } from "@/lib/addresses";
 import { ctokenAbi, routerAbi } from "@/lib/abis";
 
+// The honest framing for the whole screen: this is a preview of an Arc-mainnet deployment routing into the
+// real Morpho / Aave venues. On testnet the venues are mocks.
+const HONESTY =
+  "Preview · simulating an Arc-mainnet deployment against Morpho/Aave · not affiliated with Morpho, Aave, or Steakhouse";
+
 // One pending/executed batch entry for the connected user: claim shares / underlying, or cancel while open.
-function BatchEntry({ meta, batchId, refresh }: { meta: MarketMeta; batchId: bigint; refresh: () => void }) {
+function BatchEntry({ asset, router, batchId, refresh }: { asset: AssetMeta; router: Hex; batchId: bigint; refresh: () => void }) {
   const { address } = useAccount();
   const pub = usePublicClient();
   const push = useToast();
   const { writeContractAsync } = useWriteContract();
   const [busy, setBusy] = useState(false);
-  const ROUTER = meta.router;
-  const shareSym = `cs${meta.underlyingSymbol}`;
+  const shareSym = `cs${asset.underlyingSymbol}`;
 
-  const { data: shares } = useReadContract({ address: ROUTER, abi: routerAbi, functionName: "previewClaimShares", args: [batchId, address as `0x${string}`], account: address, query: { enabled: !!address, refetchInterval: 8000 } });
-  const { data: cash } = useReadContract({ address: ROUTER, abi: routerAbi, functionName: "previewClaim", args: [batchId, address as `0x${string}`], account: address, query: { enabled: !!address, refetchInterval: 8000 } });
-  const { data: result } = useReadContract({ address: ROUTER, abi: routerAbi, functionName: "batchResult", args: [batchId], query: { refetchInterval: 8000 } });
+  const { data: shares } = useReadContract({ address: router, abi: routerAbi, functionName: "previewClaimShares", args: [batchId, address as Hex], account: address, query: { enabled: !!address, refetchInterval: 8000 } });
+  const { data: cash } = useReadContract({ address: router, abi: routerAbi, functionName: "previewClaim", args: [batchId, address as Hex], account: address, query: { enabled: !!address, refetchInterval: 8000 } });
+  const { data: result } = useReadContract({ address: router, abi: routerAbi, functionName: "batchResult", args: [batchId], query: { refetchInterval: 8000 } });
 
   const executed = ((result as readonly [boolean, number, bigint, bigint] | undefined)?.[0]) ?? false;
   const sh = (shares as bigint | undefined) ?? 0n;
@@ -32,7 +37,7 @@ function BatchEntry({ meta, batchId, refresh }: { meta: MarketMeta; batchId: big
   async function tx(fn: "claimShares" | "claim" | "cancelDeposit" | "cancelWithdraw", ok: string) {
     setBusy(true);
     try {
-      const h = await writeContractAsync({ address: ROUTER, abi: routerAbi, functionName: fn, args: fn.startsWith("cancel") ? [] : [batchId] });
+      const h = await writeContractAsync({ address: router, abi: routerAbi, functionName: fn, args: fn.startsWith("cancel") ? [] : [batchId] });
       await pub!.waitForTransactionReceipt({ hash: h });
       push(ok, "ok"); refresh();
     } catch (e) { push(errMsg(e), "err"); }
@@ -49,10 +54,10 @@ function BatchEntry({ meta, batchId, refresh }: { meta: MarketMeta; batchId: big
       <span style={cssm(`width:9px;height:9px;border-radius:50%;flex:none;background:${executed ? "var(--green)" : "var(--amber)"}${executed ? "" : ";animation:beat 1.7s ease-in-out infinite"}`)} />
       <div style={css("display:flex;flex-direction:column;flex:1;min-width:0")}>
         <span style={css("font:700 13.5px var(--mono);color:var(--ink)")}>Batch #{batchId.toString()}</span>
-        <span style={css("font:400 12px var(--display);color:var(--ink-3)")}>{executed ? (sh > 0n ? `${sh.toString()} ${shareSym} shares ready` : cs > 0n ? `${fmtUnits(cs, meta.decimals)} ${meta.symbol} ready` : "settled") : "queued · awaiting execution"}</span>
+        <span style={css("font:400 12px var(--display);color:var(--ink-3)")}>{executed ? (sh > 0n ? `${sh.toString()} ${shareSym} shares ready` : cs > 0n ? `${fmtUnits(cs, asset.decimals)} ${asset.symbol} ready` : "settled") : "queued · awaiting execution"}</span>
       </div>
       {executed && sh > 0n && btn("Claim shares", () => tx("claimShares", "Shares claimed"))}
-      {executed && cs > 0n && btn(`Claim ${meta.symbol}`, () => tx("claim", `${meta.symbol} claimed`))}
+      {executed && cs > 0n && btn(`Claim ${asset.symbol}`, () => tx("claim", `${asset.symbol} claimed`))}
       {!executed && (<>
         {btn("Cancel deposit", () => tx("cancelDeposit", "Deposit cancelled · refunded"), false)}
         {btn("Cancel withdraw", () => tx("cancelWithdraw", "Withdrawal cancelled"), false)}
@@ -61,11 +66,12 @@ function BatchEntry({ meta, batchId, refresh }: { meta: MarketMeta; batchId: big
   );
 }
 
-function MarketSwitcher({ current }: { current: string }) {
+// Asset switcher (the confidential assets). Selecting one resets to its default venue and stays on Earn.
+function AssetSwitcher({ current }: { current: string }) {
   const { openMarket } = useNav();
   return (
     <div style={css("display:flex;align-items:center;gap:7px;flex-wrap:wrap")}>
-      {MARKET_LIST.map((m) => (
+      {ASSET_LIST.map((m) => (
         <button
           key={m.symbol}
           onClick={() => openMarket(m.symbol)}
@@ -78,25 +84,107 @@ function MarketSwitcher({ current }: { current: string }) {
   );
 }
 
+// Redacted per-venue user distribution — styled private. Individual rows are dotted; only the aggregate shows.
+function RedactedDistribution({ asset, v }: { asset: AssetMeta; v: VenueMeta }) {
+  const shareSym = `cs${asset.underlyingSymbol}`;
+  return (
+    <div style={css("background:var(--surface-2);border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:10px")}>
+      <div style={css("display:flex;align-items:center;gap:8px")}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--ink-2)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={css("flex:none")}><rect x="5" y="10.5" width="14" height="9.5" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg>
+        <span style={css("font:700 12px var(--display);color:var(--ink)")}>User distribution</span>
+        <span style={css("font:650 9px var(--display);letter-spacing:.06em;text-transform:uppercase;color:#8a6d00;background:var(--accent-soft);border:1px solid #f0e08f;border-radius:999px;padding:2px 7px")}>Private</span>
+      </div>
+      <span style={css("font:400 11.5px/1.5 var(--display);color:var(--ink-3)")}>Individual deposits hidden — only the aggregate is public.</span>
+      <div style={css("display:flex;flex-direction:column")}>
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} style={css("display:grid;grid-template-columns:1fr 96px 84px;gap:8px;align-items:center;padding:7px 2px;border-top:1px solid var(--line)")}>
+            <span style={css("display:inline-flex;align-items:center;gap:8px")}>
+              <span style={css("width:18px;height:18px;border-radius:50%;background:var(--line-2);flex:none")} />
+              <span style={css("font:700 12px var(--mono);color:var(--ink-3);letter-spacing:.05em")}>0x••••</span>
+            </span>
+            <span style={css("text-align:right;font:700 12.5px var(--mono);color:var(--ink-3)")}>{DOTS}</span>
+            <span style={css("text-align:right;font:600 11.5px var(--mono);color:var(--ink-3)")}>{DOTS} {shareSym}</span>
+          </div>
+        ))}
+      </div>
+      <div style={css("display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:8px;border-top:1px solid var(--line)")}>
+        <span style={css("font:650 10.5px var(--display);letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3)")}>Aggregate (public)</span>
+        <span style={css("font:800 15px var(--mono);color:var(--ink);font-variant-numeric:tabular-nums")}>{v.tvl}</span>
+      </div>
+    </div>
+  );
+}
+
+// Venue picker for the selected asset. Choosing a venue binds Deposit/Withdraw/claim to that venue's router.
+function VenuePicker({ asset, selected, onSelect }: { asset: AssetMeta; selected: string; onSelect: (venueName: string) => void }) {
+  const v = venueMeta(asset.symbol, selected);
+  return (
+    <div style={css("background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:20px 22px;display:flex;flex-direction:column;gap:14px;box-shadow:0 1px 2px rgba(20,18,12,.03)")}>
+      <div style={css("display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap")}>
+        <span style={css("font:750 15px var(--display);color:var(--ink)")}>Choose a venue</span>
+        <span style={css("font:400 11px var(--display);color:var(--ink-3)")}>each routes the same private position into a different public venue</span>
+      </div>
+
+      {/* venue tabs */}
+      <div style={css("display:flex;gap:10px;flex-wrap:wrap")}>
+        {asset.venues.map((ven) => {
+          const active = ven.name === selected;
+          return (
+            <button
+              key={ven.name}
+              onClick={() => onSelect(ven.name)}
+              style={cssm("flex:1;min-width:150px;display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:14px;cursor:pointer;text-align:left;border:1px solid var(--line)", active ? { borderColor: "var(--panel)", background: "var(--surface-2)", boxShadow: "0 0 0 1px var(--panel)" } : { background: "var(--surface)" })}
+            >
+              <VenueLogo logoKey={ven.logoKey} size={26} />
+              <div style={css("display:flex;flex-direction:column;min-width:0;flex:1")}>
+                <span style={css("font:750 13.5px var(--display);color:var(--ink)")}>{ven.name}</span>
+                <span style={css("font:600 11px var(--mono);color:var(--ink-3)")}>{ven.apy} APY</span>
+              </div>
+              {!ven.simulated
+                ? <span style={css("width:8px;height:8px;border-radius:50%;background:var(--green);flex:none;animation:beat 1.7s ease-in-out infinite")} />
+                : <span style={css("width:8px;height:8px;border-radius:50%;background:var(--amber);flex:none")} />}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* selected venue detail */}
+      <div style={css("display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:12px 14px;background:var(--surface-2);border:1px solid var(--line);border-radius:14px")}>
+        <span style={css("display:inline-flex;align-items:baseline;gap:5px")}><span style={css("font:800 20px var(--display);color:var(--ink);font-variant-numeric:tabular-nums")}>{v.apy}</span><span style={css("font:650 9.5px var(--display);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)")}>Supply APY</span></span>
+        <span style={css("width:1px;height:18px;background:var(--line)")} />
+        <span style={css("display:inline-flex;align-items:baseline;gap:5px")}><span style={css("font:700 15px var(--mono);color:var(--ink-2);font-variant-numeric:tabular-nums")}>{v.tvl}</span><span style={css("font:650 9.5px var(--display);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)")}>TVL</span></span>
+        <div style={css("flex:1")} />
+        {v.curator && <CuratorChip curator={v.curator} />}
+        <a href={v.url} target="_blank" rel="noreferrer" style={css("display:inline-flex;align-items:center;gap:5px;font:600 11.5px var(--display);color:var(--ink-2);text-decoration:none")}>
+          {v.name}<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M7 17 17 7M8 7h9v9" /></svg>
+        </a>
+      </div>
+
+      <RedactedDistribution asset={asset} v={v} />
+    </div>
+  );
+}
+
 export function Earn() {
   const { address, isConnected } = useAccount();
-  const { selectedMarket, go } = useNav();
-  const meta = marketMeta(selectedMarket);
+  const { selectedMarket, selectedVenue, setSelectedVenue, go } = useNav();
+  const asset = assetMeta(selectedMarket);
+  const venue = venueMeta(selectedMarket, selectedVenue);
   const pub = usePublicClient();
   const push = useToast();
-  const conf = useConfToken(meta.cToken);
-  const market = useMarket(meta);
+  const conf = useConfToken(asset.cToken);
+  const market = useMarket(venue); // binds all reads/writes to the SELECTED venue's router
   const now = useNowSec();
+  const r = useReveal(`${asset.symbol} · ${venue.name}`);
   const { writeContractAsync } = useWriteContract();
   const [tab, setTab] = useState<"deposit" | "withdraw">("deposit");
   const [amt, setAmt] = useState("");
-  const [reveal, setReveal] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const ROUTER = meta.router;
-  const CTOKEN = meta.cToken;
-  const dec = meta.decimals;
-  const shareSym = `cs${meta.underlyingSymbol}`;
+  const ROUTER = venue.router;
+  const CTOKEN = asset.cToken;
+  const dec = asset.decimals;
+  const shareSym = `cs${asset.underlyingSymbol}`;
   const dispatchIn = market.dispatchableInAt(now);
   const canExecute = dispatchIn <= 0;
 
@@ -122,7 +210,7 @@ export function Earn() {
         if (rawShares <= 0n) throw new Error("Enter a share amount");
         const h = await writeContractAsync({ address: ROUTER, abi: routerAbi, functionName: "requestWithdraw", args: [rawShares] });
         await pub!.waitForTransactionReceipt({ hash: h });
-        push(`Withdrawal queued · claim ${meta.symbol} after the batch executes`, "ok");
+        push(`Withdrawal queued · claim ${asset.symbol} after the batch executes`, "ok");
       }
       setAmt(""); refreshAll();
     } catch (e) { push(errMsg(e), "err"); }
@@ -150,43 +238,47 @@ export function Earn() {
       {/* header */}
       <div style={css("display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap")}>
         <div style={css("display:flex;align-items:center;gap:15px")}>
-          <TokenIcon token={meta.symbol} size={46} />
+          <TokenIcon token={asset.symbol} size={46} />
           <div>
             <div style={css("display:flex;align-items:center;gap:11px;flex-wrap:wrap")}>
-              <h1 style={css("margin:0;font:800 34px/1.02 var(--display);letter-spacing:-.03em;color:var(--ink)")}>{meta.label}</h1>
-              {meta.simulated ? (
+              <h1 style={css("margin:0;font:800 34px/1.02 var(--display);letter-spacing:-.03em;color:var(--ink)")}>{asset.label}</h1>
+              {venue.simulated ? (
                 <span style={css("display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;background:#fbf1dc;border:1px solid #f0d97a;color:#8a6d00;font:650 10.5px var(--display)")}>Preview · simulated</span>
               ) : (
                 <span style={css("display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;background:var(--green-bg);border:1px solid #bfe3cf;color:#1c7a4f;font:700 10.5px var(--display)")}><span style={css("width:7px;height:7px;border-radius:50%;background:var(--green);animation:beat 1.7s ease-in-out infinite")} />LIVE</span>
               )}
             </div>
             <div style={css("display:flex;align-items:center;gap:10px;margin-top:7px;flex-wrap:wrap")}>
-              <span style={css("font:600 13px var(--mono);color:var(--ink-3)")}>{meta.symbol} · {meta.underlyingSymbol}</span>
+              <span style={css("font:600 13px var(--mono);color:var(--ink-3)")}>{asset.symbol} · {asset.underlyingSymbol}</span>
               <span style={css("color:var(--ink-3)")}>·</span>
-              <a href={meta.venueUrl} target="_blank" rel="noreferrer" style={css("display:inline-flex;align-items:center;gap:5px;font:600 13px var(--display);color:var(--ink-2);text-decoration:none")}>via {meta.venueName}<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M7 17 17 7M8 7h9v9" /></svg></a>
+              <a href={venue.url} target="_blank" rel="noreferrer" style={css("display:inline-flex;align-items:center;gap:6px;font:600 13px var(--display);color:var(--ink-2);text-decoration:none")}><VenueLogo logoKey={venue.logoKey} size={17} />via {venue.name}<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M7 17 17 7M8 7h9v9" /></svg></a>
               <span style={css("color:var(--ink-3)")}>·</span>
-              <span style={css("font:700 13px var(--display);color:var(--ink)")}>{meta.apy} APY</span>
+              <span style={css("font:700 13px var(--display);color:var(--ink)")}>{venue.apy} APY</span>
             </div>
           </div>
         </div>
-        <MarketSwitcher current={meta.symbol} />
+        <AssetSwitcher current={asset.symbol} />
       </div>
 
-      <div style={cssm("border-radius:12px;padding:10px 14px;margin-top:16px;font:400 12px/1.5 var(--display)", meta.simulated ? { background: "#fbf1dc", border: "1px solid #f0d97a", color: "#6b5a2a" } : { background: "var(--green-bg)", border: "1px solid #bfe3cf", color: "#1c6b47" })}>
-        {meta.simulated
-          ? <>Simulated market — a mock {meta.underlyingSymbol} underlying + mock {meta.venueName}-style venue on Arc testnet. Use the Faucet to mint test {meta.underlyingSymbol}, then shield &amp; deposit. The protocol logic (batching, netting, shares, solvency) is real.</>
-          : <>Live market — wraps <b style={css("font-weight:700")}>real</b> Arc testnet USDC. Deposits pool into a single confidential position; only the batch net crosses to the venue.</>}
+      <div style={cssm("border-radius:12px;padding:10px 14px;margin-top:16px;font:400 12px/1.5 var(--display)", venue.simulated ? { background: "#fbf1dc", border: "1px solid #f0d97a", color: "#6b5a2a" } : { background: "var(--green-bg)", border: "1px solid #bfe3cf", color: "#1c6b47" })}>
+        {venue.simulated
+          ? <>{HONESTY}. A mock {asset.underlyingSymbol} underlying + mock {venue.name}-style venue on Arc testnet. Use the Faucet to mint test {asset.underlyingSymbol}, then shield &amp; deposit. The protocol logic (batching, netting, shares, solvency) is real.</>
+          : <>Live market — wraps <b style={css("font-weight:700")}>real</b> Arc testnet USDC, routing into {venue.name}. Deposits pool into a single confidential position; only the batch net crosses to the venue.</>}
       </div>
       <div style={css("height:1px;background:var(--line);margin:22px 0 24px")} />
 
+      {/* venue picker */}
+      <VenuePicker asset={asset} selected={selectedVenue} onSelect={setSelectedVenue} />
+
       {/* metrics */}
-      <div style={css("display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:16px")}>
-        <div style={css("background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:20px 22px;display:flex;flex-direction:column;gap:8px")}><span style={css("font:650 11px var(--display);letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)")}>Market TVL</span><span style={css("font:800 28px var(--display);color:var(--ink);font-variant-numeric:tabular-nums")}>{fmtUnits(market.totalAssets, dec, { compact: true })} <span style={css("font:600 13px var(--mono);color:var(--ink-3)")}>{meta.symbol}</span></span></div>
+      <div style={css("display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:16px;margin-top:16px")}>
+        <div style={css("background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:20px 22px;display:flex;flex-direction:column;gap:8px")}><span style={css("font:650 11px var(--display);letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)")}>Market TVL</span><span style={css("font:800 28px var(--display);color:var(--ink);font-variant-numeric:tabular-nums")}>{fmtUnits(market.totalAssets, dec, { compact: true })} <span style={css("font:600 13px var(--mono);color:var(--ink-3)")}>{asset.symbol}</span></span></div>
         <div style={css("background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:20px 22px;display:flex;flex-direction:column;gap:8px")}>
-          <div style={css("display:flex;align-items:center;justify-content:space-between")}><span style={css("font:650 11px var(--display);letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)")}>Your position</span><button onClick={() => setReveal((r) => !r)} style={css("font:650 10.5px var(--display);color:#8a6d00;background:var(--accent-soft);border:1px solid #f0e08f;border-radius:999px;padding:3px 9px;cursor:pointer")}>{reveal ? "Hide" : "Reveal"}</button></div>
-          <span style={css("font:800 28px var(--mono);color:var(--ink);font-variant-numeric:tabular-nums")}>{reveal ? (market.positionValue != null ? fmtUnits(market.positionValue, dec) : "—") : DOTS} <span style={css("font:600 12px var(--display);color:var(--ink-3)")}>{meta.symbol}</span></span>
+          <div style={css("display:flex;align-items:center;justify-content:space-between")}><span style={css("font:650 11px var(--display);letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)")}>Your position</span><button onClick={r.toggle} disabled={r.signing} style={cssm("font:650 10.5px var(--display);color:#8a6d00;background:var(--accent-soft);border:1px solid #f0e08f;border-radius:999px;padding:3px 9px;cursor:pointer", r.signing ? { opacity: 0.6, cursor: "wait" } : undefined)}>{r.label}</button></div>
+          <span style={css("font:800 28px var(--mono);color:var(--ink);font-variant-numeric:tabular-nums")}>{r.revealed ? (market.positionValue != null ? fmtUnits(market.positionValue, dec) : "—") : DOTS} <span style={css("font:600 12px var(--display);color:var(--ink-3)")}>{asset.symbol}</span></span>
+          {!r.revealed && <RevealNote r={r} />}
         </div>
-        <div style={css("background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:20px 22px;display:flex;flex-direction:column;gap:8px")}><span style={css("font:650 11px var(--display);letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)")}>Your shares</span><span style={css("font:800 28px var(--mono);color:var(--ink);font-variant-numeric:tabular-nums")}>{reveal ? (market.myShares != null ? market.myShares.toString() : "—") : DOTS} <span style={css("font:600 12px var(--display);color:var(--ink-3)")}>{shareSym}</span></span></div>
+        <div style={css("background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:20px 22px;display:flex;flex-direction:column;gap:8px")}><span style={css("font:650 11px var(--display);letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)")}>Your shares</span><span style={css("font:800 28px var(--mono);color:var(--ink);font-variant-numeric:tabular-nums")}>{r.revealed ? (market.myShares != null ? market.myShares.toString() : "—") : DOTS} <span style={css("font:600 12px var(--display);color:var(--ink-3)")}>{shareSym}</span></span></div>
       </div>
 
       {/* batch banner */}
@@ -202,32 +294,34 @@ export function Earn() {
             {(["deposit", "withdraw"] as const).map((t) => (
               <button key={t} onClick={() => { setTab(t); setAmt(""); }} style={cssm("padding:8px 16px;border-radius:999px;font:650 13px var(--display);cursor:pointer;border:1px solid var(--line)", tab === t ? { background: "var(--panel)", color: "#fff", borderColor: "var(--panel)" } : { background: "var(--surface)", color: "var(--ink-2)" })}>{t === "deposit" ? "Deposit" : "Withdraw"}</button>
             ))}
+            <div style={css("flex:1")} />
+            <span style={css("display:inline-flex;align-items:center;gap:6px;font:600 11.5px var(--display);color:var(--ink-3)")}><VenueLogo logoKey={venue.logoKey} size={15} />routing via {venue.name}</span>
           </div>
           <div style={css("display:flex;align-items:center;gap:9px;background:var(--surface-2);border:1px solid var(--line);border-radius:13px;padding:12px 14px;margin-bottom:6px")}>
-            <TokenIcon token={tab === "deposit" ? meta.symbol : shareSym} size={26} />
+            <TokenIcon token={tab === "deposit" ? asset.symbol : shareSym} size={26} />
             <input value={amt} onChange={(e) => setAmt(e.target.value)} inputMode="decimal" placeholder={tab === "deposit" ? "0.0" : "shares"} style={css("flex:1;min-width:0;border:none;background:none;outline:none;font:700 20px var(--mono);color:var(--ink)")} />
-            <span style={css("font:600 12px var(--display);color:var(--ink-3)")}>{tab === "deposit" ? meta.symbol : shareSym}</span>
+            <span style={css("font:600 12px var(--display);color:var(--ink-3)")}>{tab === "deposit" ? asset.symbol : shareSym}</span>
           </div>
-          <div style={css("font:400 11.5px var(--display);color:var(--ink-3);margin:2px 2px 14px")}>{tab === "deposit" ? `Private ${meta.symbol} balance: ${fmtUnits(conf.myBalance, dec)}` : `Your shares: ${market.myShares != null ? market.myShares.toString() : "—"}`}</div>
+          <div style={css("font:400 11.5px var(--display);color:var(--ink-3);margin:2px 2px 14px")}>{tab === "deposit" ? `Private ${asset.symbol} balance: ${fmtUnits(conf.myBalance, dec)}` : `Your shares: ${market.myShares != null ? market.myShares.toString() : "—"}`}</div>
           <button onClick={submit} disabled={busy} style={cssm("width:100%;background:linear-gradient(180deg,#ffdf5c,#ffd208);color:#1a1a1a;border:1px solid rgba(0,0,0,.06);border-radius:13px;padding:13px;font:700 14.5px var(--display);cursor:pointer", busy ? { opacity: 0.6, cursor: "wait" } : undefined)}>{busy ? "Submitting…" : tab === "deposit" ? "Queue confidential deposit" : "Request confidential withdrawal"}</button>
-          <p style={css("margin:12px 2px 0;font:400 11.5px/1.5 var(--display);color:var(--ink-3)")}>Queued into the open batch. When the window closes, anyone can execute it; then you pull your {tab === "deposit" ? "shares" : meta.symbol} below. Cancel any time before it executes.</p>
+          <p style={css("margin:12px 2px 0;font:400 11.5px/1.5 var(--display);color:var(--ink-3)")}>Queued into the open batch. When the window closes, anyone can execute it; then you pull your {tab === "deposit" ? "shares" : asset.symbol} below. Cancel any time before it executes.</p>
         </div>
 
         {/* claimable / pending */}
         <div style={css("background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:20px 22px;box-shadow:0 1px 2px rgba(20,18,12,.03)")}>
-          <div style={css("display:flex;align-items:center;justify-content:space-between;margin-bottom:8px")}><span style={css("font:750 15px var(--display);color:var(--ink)")}>Your batches</span><span style={css("font:400 11.5px var(--display);color:var(--ink-3)")}>pull shares / {meta.symbol}</span></div>
+          <div style={css("display:flex;align-items:center;justify-content:space-between;margin-bottom:8px")}><span style={css("font:750 15px var(--display);color:var(--ink)")}>Your batches</span><span style={css("font:400 11.5px var(--display);color:var(--ink-3)")}>pull shares / {asset.symbol}</span></div>
           {!isConnected ? (
             <div style={css("padding:26px 4px;text-align:center;font:400 13px var(--display);color:var(--ink-3)")}>Connect your wallet to see your batches.</div>
           ) : market.pendingBatches.length === 0 ? (
             <div style={css("padding:26px 4px;text-align:center;font:400 13px var(--display);color:var(--ink-3)")}>No pending batches. Deposit or withdraw to get started.</div>
           ) : (
-            market.pendingBatches.map((b) => <BatchEntry key={b.toString()} meta={meta} batchId={b} refresh={refreshAll} />)
+            market.pendingBatches.map((b) => <BatchEntry key={b.toString()} asset={asset} router={ROUTER} batchId={b} refresh={refreshAll} />)
           )}
         </div>
       </div>
 
       <p style={css("margin:18px 2px 0;font:400 11.5px/1.55 var(--display);color:var(--ink-3)")}>
-        Confidential vault routing into an existing public lending venue ({meta.simulated ? "a mock here" : "a mock venue on testnet"}). Not affiliated with {meta.venueName}; not for real funds pre-audit. <a href={`${EXPLORER}/address/${ROUTER}`} target="_blank" rel="noreferrer" style={css("color:#8a6d00;text-decoration:none;font-weight:600")}>Router on Arcscan →</a>
+        {HONESTY}. Confidential vault routing into an existing public lending venue (a mock venue on testnet); not for real funds pre-audit. <a href={`${EXPLORER}/address/${ROUTER}`} target="_blank" rel="noreferrer" style={css("color:#8a6d00;text-decoration:none;font-weight:600")}>Router on Arcscan →</a>
       </p>
     </div>
   );

@@ -7,10 +7,11 @@ import { useToast } from "@/components/Toast";
 import { WhatsPrivate } from "@/components/Privacy";
 import { useConfToken, useLedger, useNowSec } from "@/lib/hooks";
 import { DOTS, fmtUnits6, toUnits6, mmss, shortAddr, errMsg } from "@/lib/format";
-import { LEDGER, USDC_MARKET } from "@/lib/addresses";
+import { LEDGER, USDC_ASSET } from "@/lib/addresses";
+import { useReveal, RevealNote } from "@/lib/useReveal";
 import { cusdcAbi, ledgerAbi } from "@/lib/abis";
 
-const CUSDC = USDC_MARKET.cToken; // the payments module settles in the live USDC market's confidential token
+const CUSDC = USDC_ASSET.cToken; // the payments module settles in the live USDC asset's confidential token
 const PAY_EXECUTED_SIG = keccak256(toBytes("PaymentExecuted(bytes32)"));
 
 function Card({ title, sub, children }: { title: string; sub?: string; children: React.ReactNode }) {
@@ -38,7 +39,7 @@ export function Payments() {
   const now = useNowSec();
   const { writeContractAsync } = useWriteContract();
 
-  const [reveal, setReveal] = useState(false);
+  const r = useReveal("payment ledger balance");
   const [fundAmt, setFundAmt] = useState("");
   const [payTo, setPayTo] = useState("");
   const [payAmt, setPayAmt] = useState("");
@@ -163,9 +164,10 @@ export function Payments() {
         {/* Account */}
         <Card title="Your account" sub="a private balance in the payment ledger">
           <div style={css("display:flex;align-items:center;justify-content:space-between;background:var(--panel);border-radius:14px;padding:16px 18px")}>
-            <div style={css("display:flex;flex-direction:column;gap:3px")}><span style={css("font:600 11px var(--display);color:#b7b2a8")}>Ledger balance</span><span style={css("font:800 26px var(--mono);color:#fff;font-variant-numeric:tabular-nums")}>{reveal ? fmtUnits6(ledger.myBalance) : DOTS}</span></div>
-            <button onClick={() => setReveal((r) => !r)} style={css("font:650 11.5px var(--display);color:#1a1a1a;background:#ffd208;border:none;border-radius:999px;padding:7px 14px;cursor:pointer")}>{reveal ? "Hide" : "Reveal"}</button>
+            <div style={css("display:flex;flex-direction:column;gap:3px")}><span style={css("font:600 11px var(--display);color:#b7b2a8")}>Ledger balance</span><span style={css("font:800 26px var(--mono);color:#fff;font-variant-numeric:tabular-nums")}>{r.revealed ? fmtUnits6(ledger.myBalance) : DOTS}</span></div>
+            <button onClick={r.toggle} disabled={r.signing} style={cssm("font:650 11.5px var(--display);color:#1a1a1a;background:#ffd208;border:none;border-radius:999px;padding:7px 14px;cursor:pointer", r.signing ? { opacity: 0.6, cursor: "wait" } : undefined)}>{r.label}</button>
           </div>
+          <RevealNote r={r} />
           {cusdc.myBalance != null && cusdc.myBalance === 0n && <span style={css("font:400 12px var(--display);color:var(--amber)")}>You have 0 cUSDC — shield some on the Faucet first.</span>}
           <Field label="Fund amount (cUSDC)"><input value={fundAmt} onChange={(e) => setFundAmt(e.target.value)} inputMode="decimal" placeholder="0.0" style={inputStyle} /></Field>
           <span style={css("font:400 11.5px var(--display);color:var(--ink-3)")}>Private cUSDC available: {fmtUnits6(cusdc.myBalance)}</span>

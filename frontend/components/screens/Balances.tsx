@@ -6,8 +6,9 @@ import { useToast } from "@/components/Toast";
 import { TokenIcon } from "@/components/TokenIcon";
 import { useNav } from "@/lib/nav";
 import { useConfToken } from "@/lib/hooks";
+import { useReveal, RevealNote } from "@/lib/useReveal";
 import { DOTS, fmtUnits, toUnits, errMsg } from "@/lib/format";
-import { marketMeta, MARKET_LIST, type MarketMeta } from "@/lib/markets";
+import { assetMeta, ASSET_LIST, type AssetMeta } from "@/lib/markets";
 import { type Hex } from "@/lib/addresses";
 import { ctokenAbi, routerAbi, erc20Abi } from "@/lib/abis";
 
@@ -25,11 +26,12 @@ function Row({ token, name, sub, value, mono = true }: { token: string; name: st
 }
 
 // One row of the all-markets confidential balances list — each calls its own gated reads.
-function MarketConfRow({ m, reveal }: { m: MarketMeta; reveal: boolean }) {
+// Shares are read from the asset's primary (live) venue router.
+function AssetConfRow({ m, reveal }: { m: AssetMeta; reveal: boolean }) {
   const { address } = useAccount();
   const conf = useConfToken(m.cToken);
   const { data: shares } = useReadContract({
-    address: m.router, abi: routerAbi, functionName: "sharesOf", args: [address as Hex],
+    address: m.venues[0].router, abi: routerAbi, functionName: "sharesOf", args: [address as Hex],
     account: address, query: { enabled: !!address, refetchInterval: 15000 },
   });
   const sh = shares as bigint | undefined;
@@ -45,12 +47,12 @@ function MarketConfRow({ m, reveal }: { m: MarketMeta; reveal: boolean }) {
 export function Balances() {
   const { address, isConnected } = useAccount();
   const { selectedMarket, setSelectedMarket } = useNav();
-  const meta = marketMeta(selectedMarket);
+  const meta = assetMeta(selectedMarket);
   const push = useToast();
   const pub = usePublicClient();
   const conf = useConfToken(meta.cToken);
   const { writeContractAsync } = useWriteContract();
-  const [reveal, setReveal] = useState(false);
+  const r = useReveal("all confidential balances");
   const [amt, setAmt] = useState("");
   const [mode, setMode] = useState<"shield" | "unshield">("shield");
   const [busy, setBusy] = useState(false);
@@ -62,7 +64,7 @@ export function Balances() {
     query: { enabled: !!address, refetchInterval: 12000 },
   });
   const { data: shares } = useReadContract({
-    address: meta.router, abi: routerAbi, functionName: "sharesOf", args: [address as Hex],
+    address: meta.venues[0].router, abi: routerAbi, functionName: "sharesOf", args: [address as Hex],
     account: address, query: { enabled: !!address, refetchInterval: 12000 },
   });
   const shareSym = `cs${meta.underlyingSymbol}`;
@@ -99,8 +101,8 @@ export function Balances() {
 
       {/* market switcher */}
       <div style={css("display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:18px")}>
-        <span style={css("font:650 11px var(--display);color:var(--ink-3);margin-right:2px")}>Market</span>
-        {MARKET_LIST.map((m) => (
+        <span style={css("font:650 11px var(--display);color:var(--ink-3);margin-right:2px")}>Asset</span>
+        {ASSET_LIST.map((m) => (
           <button key={m.symbol} onClick={() => { setSelectedMarket(m.symbol); setAmt(""); }} style={cssm("display:inline-flex;align-items:center;gap:7px;padding:6px 11px;border-radius:999px;font:650 12px var(--display);cursor:pointer;border:1px solid var(--line)", m.symbol === selectedMarket ? { background: "var(--panel)", color: "#fff", borderColor: "var(--panel)" } : { background: "var(--surface)", color: "var(--ink-2)" })}>
             <TokenIcon token={m.symbol} size={16} />{m.symbol}
           </button>
@@ -127,10 +129,11 @@ export function Balances() {
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--ink-2)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="10.5" width="14" height="9.5" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg>
               Private balances · {meta.symbol}
             </span>
-            <button onClick={() => setReveal((r) => !r)} style={css("font:650 11.5px var(--display);color:#8a6d00;background:var(--accent-soft);border:1px solid #f0e08f;border-radius:999px;padding:5px 12px;cursor:pointer")}>{reveal ? "Hide" : "Reveal"}</button>
+            <button onClick={r.toggle} disabled={r.signing} style={cssm("font:650 11.5px var(--display);color:#8a6d00;background:var(--accent-soft);border:1px solid #f0e08f;border-radius:999px;padding:5px 12px;cursor:pointer", r.signing ? { opacity: 0.6, cursor: "wait" } : undefined)}>{r.label}</button>
           </div>
-          <Row token={meta.symbol} name={meta.symbol} sub={`private ${meta.underlyingSymbol} balance`} value={reveal ? fmtUnits(conf.myBalance, dec) : DOTS} />
-          <Row token={shareSym} name={shareSym} sub="private vault share" value={reveal ? ((shares as bigint | undefined) != null ? (shares as bigint).toString() : "—") : DOTS} />
+          {!r.revealed && <div style={css("margin:0 2px 8px")}><RevealNote r={r} /></div>}
+          <Row token={meta.symbol} name={meta.symbol} sub={`private ${meta.underlyingSymbol} balance`} value={r.revealed ? fmtUnits(conf.myBalance, dec) : DOTS} />
+          <Row token={shareSym} name={shareSym} sub="private vault share" value={r.revealed ? ((shares as bigint | undefined) != null ? (shares as bigint).toString() : "—") : DOTS} />
           <p style={css("margin:12px 2px 0;font:400 11.5px/1.5 var(--display);color:var(--ink-3)")}>Revealed to you in-app for this session — nobody else can read them. Shielded on-chain under APS once live.</p>
         </div>
       </div>
@@ -156,15 +159,16 @@ export function Balances() {
       <div style={css("background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:20px 22px;margin-top:16px;box-shadow:0 1px 2px rgba(20,18,12,.03)")}>
         <div style={css("display:flex;align-items:center;justify-content:space-between;margin-bottom:6px")}>
           <span style={css("font:750 15px var(--display);color:var(--ink)")}>All markets · your private balances</span>
-          <button onClick={() => setReveal((r) => !r)} style={css("font:650 11.5px var(--display);color:#8a6d00;background:var(--accent-soft);border:1px solid #f0e08f;border-radius:999px;padding:5px 12px;cursor:pointer")}>{reveal ? "Hide" : "Reveal"}</button>
+          <button onClick={r.toggle} disabled={r.signing} style={cssm("font:650 11.5px var(--display);color:#8a6d00;background:var(--accent-soft);border:1px solid #f0e08f;border-radius:999px;padding:5px 12px;cursor:pointer", r.signing ? { opacity: 0.6, cursor: "wait" } : undefined)}>{r.label}</button>
         </div>
+        {!r.revealed && <div style={css("margin:0 2px 8px")}><RevealNote r={r} /></div>}
         <div style={css("display:grid;grid-template-columns:1fr 130px 110px;gap:8px;padding:0 4px 10px;border-bottom:1px solid var(--line);font:650 10.5px var(--display);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)")}>
           <span>Token</span><span style={css("text-align:right")}>Balance</span><span style={css("text-align:right")}>Shares</span>
         </div>
         {!isConnected ? (
           <div style={css("padding:24px 4px;text-align:center;font:400 13px var(--display);color:var(--ink-3)")}>Connect your wallet to see your private balances.</div>
         ) : (
-          MARKET_LIST.map((m) => <MarketConfRow key={m.symbol} m={m} reveal={reveal} />)
+          ASSET_LIST.map((m) => <AssetConfRow key={m.symbol} m={m} reveal={r.revealed} />)
         )}
       </div>
     </div>

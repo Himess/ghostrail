@@ -125,17 +125,15 @@ Share math uses a **virtual-offset** guard (`1e3 / 1`) and reads NAV from the **
 
 > **Network:** Arc Testnet (chainId `5042002`) · RPC `https://rpc.testnet.arc.network` · Explorer [testnet.arcscan.app](https://testnet.arcscan.app) · the USDC market wraps **real Arc testnet USDC** `0x3600…0000`
 
-**5 asset markets** (each = `ConfidentialToken` + `MockLendingVenue` + pull-based `ConfidentialVaultRouter`):
+**5 assets × 2 venues (Morpho / Aave) = 10 markets** — each asset shares one `ConfidentialToken`; each (asset, venue) is its own `MockLendingVenue` + pull-based `ConfidentialVaultRouter`, like a confidential lending aggregator. Only **cUSDC · Morpho** is LIVE (real Arc USDC); the rest are simulated. Full per-venue addresses in [`arc-testnet.json`](./deployments/arc-testnet.json).
 
-| Market | Router | Decimals | Status |
-|---|---|---|---|
-| **cUSDC** | [`0xA2E34e…853A`](https://testnet.arcscan.app/address/0xA2E34eA6aD25675f792e48A3D75875147502853A) | 6 | **LIVE** (real USDC) |
-| cWETH | [`0xAEF65E…8A23`](https://testnet.arcscan.app/address/0xAEF65E9527946d2C8904f9Fbfc7575F54B208A23) | 18 | simulated |
-| cWBTC | [`0xa7cCB8…a87b`](https://testnet.arcscan.app/address/0xa7cCB8f57a95007A043d017d64511C13b9d9a87b) | 8 | simulated |
-| cEURC | [`0xAEB94A…7402`](https://testnet.arcscan.app/address/0xAEB94AF55B126b69ffFA8C249E0FA5806D047402) | 6 | simulated |
-| cUSTB | [`0x7Ef62e…6411`](https://testnet.arcscan.app/address/0x7Ef62e133c52e74453A5930F9D923174aBf66411) | 6 | simulated |
+| Market (asset · venue) | Router | Status |
+|---|---|---|
+| **cUSDC · Morpho** | [`0xCEDA3e…d024`](https://testnet.arcscan.app/address/0xCEDA3eE062a10Dd274f4a243a0601E434063d024) | **LIVE** (real USDC) |
+| cUSDC · Aave | [`0x4BDC81…5EAd`](https://testnet.arcscan.app/address/0x4BDC81797936fccB85BA1dF03E0e314ffa7E5EAd) | simulated |
+| cWETH / cWBTC / cEURC / cUSTB · Morpho + Aave | see [`arc-testnet.json`](./deployments/arc-testnet.json) | simulated |
 
-Shared: **PaymentLedger** (secondary) [`0xe6D940…7b9A`](https://testnet.arcscan.app/address/0xe6D940a00fE26AFb44495F1D23583457f2b07b9A) · **cUSDC token** `0x84a119…67d8`. The non-USDC markets are **simulated** (mock underlyings + mock venues), clearly tagged.
+Shared: **PaymentLedger** (secondary) `0x3957406c…41E1` · **cUSDC token** `0x5d97184f…F562`. Simulated markets use mock underlyings + mock venues, clearly tagged.
 
 **Live end-to-end smoke on the USDC market (real tx hashes):** shield → fund → confidential pay → deposit → executeBatch → claimShares, all on-chain — `sharesOf → 1e9`, `totalAssets → 1e6` (net crossed to the venue), solvent. Full per-market addresses + hashes in [`deployments/arc-testnet-smoke.md`](./deployments/arc-testnet-smoke.md) / [`arc-testnet.json`](./deployments/arc-testnet.json).
 
