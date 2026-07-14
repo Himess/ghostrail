@@ -12,13 +12,14 @@
 [![Network](https://img.shields.io/badge/Arc-Testnet%205042002-2775CA?style=for-the-badge&labelColor=1a1a1a)](https://testnet.arcscan.app)
 [![Solidity](https://img.shields.io/badge/Solidity-0.8.24-363636?style=for-the-badge&labelColor=1a1a1a)](https://soliditylang.org/)
 
+[![Live Demo](https://img.shields.io/badge/▶%20Live%20Demo-ghostrail--wine.vercel.app-2fbf7a?style=flat-square)](https://ghostrail-wine.vercel.app)
 [![Tests](https://img.shields.io/badge/forge%20test-56%20passing-2fbf7a?style=flat-square)](#-testing)
 [![Invariants](https://img.shields.io/badge/fuzz%20invariants-4%20·%20128k%20calls-brightgreen?style=flat-square)](#-testing)
 [![USDC](https://img.shields.io/badge/USDC-integrated%20(real%20Arc%20testnet)-2775CA?style=flat-square)](https://faucet.circle.com)
 [![402](https://img.shields.io/badge/x402-round--trip%20live-5c9bff?style=flat-square)](#-sdk--the-402-flow)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
 
-**[📜 Deployed contracts](#-deployed-contracts-arc-testnet) · [🧠 How it works](#-under-the-hood) · [🔒 Privacy model](#-whats-private-vs-public) · [🛰 Roadmap to APS](#-limitations--roadmap)**
+**[🌐 Live Demo](https://ghostrail-wine.vercel.app) · [📜 Deployed contracts](#-deployed-contracts-arc-testnet) · [🧠 How it works](#-under-the-hood) · [🔒 Privacy model](#-whats-private-vs-public) · [🛰 Roadmap to APS](#-limitations--roadmap)**
 
 </div>
 
@@ -252,7 +253,7 @@ Honest by design — a grant/positioning checkpoint, not a finished mainnet prot
 
 ### A confidential-finance layer for **Circle's Arc** — payments + private lending, one SDK
 
-**[📜 Contracts on Arcscan](https://testnet.arcscan.app) · [🔐 Arc docs](https://docs.arc.network) · [💧 Circle faucet](https://faucet.circle.com)**
+**[🌐 ghostrail-wine.vercel.app](https://ghostrail-wine.vercel.app) · [📜 Contracts on Arcscan](https://testnet.arcscan.app) · [🔐 Arc docs](https://docs.arc.network) · [💧 Circle faucet](https://faucet.circle.com)**
 
 *Operational privacy for the USDC-native agent economy — architected for APS, honest about the boundary.*
 
