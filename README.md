@@ -245,7 +245,7 @@ Honest by design — a grant/positioning checkpoint, not a finished mainnet prot
 - **Notional privacy** (local **and** Arc testnet) — real enforcement arrives with APS (enclave + view keys). Every production-divergence point is marked `// APS-SWAP:` in the code (16 sites).
 - **Anonymity-set caveat** — a pooled router's privacy scales with participation; a single participant in a batch means the net equals their amount.
 - **Mock venue** — a production adapter maps `ILendingVenue` to a real Morpho vault / Aave pool. **Module B is not for mainnet funds pre-audit.**
-- **Roadmap:** APS swap → real venue adapters → independent audit gate → **v2: same-asset leverage on vault shares** (same asset family — no cross-asset price-gap risk, high LLTV viable) → optional KYC gating. Parked (demand-gated): cross-asset borrow, private swap.
+- **Roadmap:** APS swap → real venue adapters → independent audit gate → **v2: same-asset leverage on vault shares** (same asset family — no cross-asset price-gap risk, high LLTV viable) → institutional compliance tier. Parked (demand-gated): cross-asset borrow, confidential yield aggregator. **Full phased roadmap → [`ROADMAP.md`](./ROADMAP.md).**
 
 ---
 
