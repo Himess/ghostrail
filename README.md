@@ -26,6 +26,8 @@
 ---
 
 > **Honest by design.** APS (Arc's TEE Privacy Sector) is **not live yet**, so on Arc testnet the confidentiality layer is **notional** — storage is readable and view-gating isn't enforced against `eth_call` spoofing. What **is** live: the protocol logic and a real USDC integration. We say *"protocol live on Arc testnet, USDC-integrated, architected for APS; confidentiality activates when APS ships."* We never claim the privacy is live. GhostRail applies proven confidential-DeFi patterns (netting, the two-speed boundary, honest boundary tables) on Arc's TEE substrate.
+>
+> **Circle integrations (genuinely live):** real Arc-testnet **USDC** (wrapped on the cUSDC market) · a real **CCTP** bridge (Circle's Bridge Kit — bring USDC from Base/Ethereum/Arbitrum Sepolia to Arc via burn→attestation→mint) · **EURC** as a market. These are real, distinct from the simulated lending venues; only the confidentiality is notional (pending APS).
 
 ---
 

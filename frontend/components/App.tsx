@@ -15,6 +15,7 @@ import { Payments } from "@/components/screens/Payments";
 import { GhostGate } from "@/components/screens/GhostGate";
 import { Balances } from "@/components/screens/Balances";
 import { Faucet } from "@/components/screens/Faucet";
+import { Bridge } from "@/components/screens/Bridge";
 import { Status } from "@/components/screens/Status";
 
 const CHAIN_NAMES: Record<number, string> = { 1: "Ethereum Mainnet", 11155111: "Sepolia", 137: "Polygon", 8453: "Base", 42161: "Arbitrum", 10: "Optimism", 56: "BNB Chain", 5042002: "Arc Testnet" };
@@ -25,18 +26,22 @@ const chainLabel = (id?: number) => (id ? CHAIN_NAMES[id] || `chain ${id}` : "")
 function NetworkBanner() {
   const { isConnected, chainId } = useAccount();
   const { switchChain, isPending } = useSwitchChain();
+  const { route } = useNav();
   const autoTried = useRef(false);
   const wrong = isConnected && chainId !== undefined && chainId !== CHAIN_ID;
+  // On the Bridge screen the user is deliberately on a SOURCE chain (Base/Eth/Arb) to burn USDC via CCTP,
+  // so don't nag/auto-switch to Arc there.
+  const suppress = route === "bridge";
 
   useEffect(() => {
-    if (wrong && !autoTried.current) {
+    if (wrong && !suppress && !autoTried.current) {
       autoTried.current = true; // one-shot: prompt once, then leave it to the manual button (no loop on reject)
       switchChain({ chainId: CHAIN_ID });
     }
     if (!wrong) autoTried.current = false; // re-arm once back on Arc
-  }, [wrong, switchChain]);
+  }, [wrong, suppress, switchChain]);
 
-  if (!wrong) return null;
+  if (!wrong || suppress) return null;
   return (
     <div style={css("display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;background:#fbe9e7;border:1px solid #f0b5ad;border-radius:14px;padding:12px 16px;margin-bottom:14px")}>
       <span style={css("display:inline-flex;align-items:center;gap:9px;font:600 13px var(--display);color:#8a2a1c")}>
@@ -83,6 +88,7 @@ function Screen() {
     case "payments": return <Payments />;
     case "ghostgate": return <GhostGate />;
     case "balances": return <Balances />;
+    case "bridge": return <Bridge />;
     case "faucet": return <Faucet />;
     case "status": return <Status />;
     default: return <Markets />;

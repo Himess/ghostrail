@@ -8,6 +8,7 @@ export type Route =
   | "earn"
   | "ghostgate"
   | "balances"
+  | "bridge"
   | "faucet"
   | "dashboard"
   | "status"
