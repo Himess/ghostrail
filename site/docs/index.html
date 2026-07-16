@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Docs — GhostRail</title>
+<meta name="description" content="How GhostRail works: the confidential token, the vault router, GhostGate netting, the privacy model, the contracts, and the honest limits.">
+<link rel="icon" href="/public/favicon.svg">
+<meta property="og:title" content="GhostRail Docs — Confidential lending on Arc">
+<meta property="og:description" content="How GhostRail works: the confidential token, the vault router, GhostGate netting, the privacy model, and the honest limits.">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#FBFBF9; --card:#FFFFFF; --wash:#F5F5F1;
+  --ink:#0B0B0C; --dim:#5F5F59; --faint:#A5A59D;
+  --line:#EAEAE5; --line-2:#DCDCD5;
+  --y:#FFD208; --y-soft:#FFF3B8; --y-wash:#FFFBE6; --y-ink:#7A5C00;
+  --green:#0E9F5E; --red:#D6453B; --blue:#2775CA; --violet:#7B61FF;
+  --sans:'Archivo',system-ui,-apple-system,sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,monospace;
+  --sh:0 1px 2px rgba(11,11,12,.04),0 8px 24px rgba(11,11,12,.05);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:84px}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.62;-webkit-font-smoothing:antialiased}
+::selection{background:var(--y);color:var(--ink)}
+::-webkit-scrollbar{width:8px}::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:#D8D8D0;border-radius:4px}
+a{color:inherit;text-decoration:none}
+code,.mono{font-family:var(--mono)}
+
+/* top bar */
+.top{position:fixed;top:0;left:0;right:0;height:60px;z-index:100;background:rgba(251,251,249,.86);
+  backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+.top-in{max-width:1360px;margin:0 auto;padding:0 24px;height:100%;display:flex;align-items:center;gap:16px}
+.brand{display:flex;align-items:center;gap:9px;font-weight:900;letter-spacing:-.03em;font-size:16px}
+.badge{font-family:var(--mono);font-size:9.5px;padding:3px 8px;border-radius:5px;background:var(--y-soft);
+  color:var(--y-ink);text-transform:uppercase;letter-spacing:.1em;font-weight:700}
+.top-r{margin-left:auto;display:flex;gap:9px;align-items:center}
+.btn{display:inline-flex;align-items:center;gap:7px;padding:8px 14px;border-radius:8px;font-weight:700;
+  font-size:13px;transition:transform .18s,box-shadow .22s,border-color .2s}
+.btn-p{background:var(--ink);color:#fff}.btn-p:hover{transform:translateY(-1px);box-shadow:0 8px 20px rgba(11,11,12,.2)}
+.btn-o{border:1px solid var(--line-2);background:var(--card)}.btn-o:hover{border-color:var(--ink)}
+.burger{display:none;width:36px;height:36px;border:1px solid var(--line-2);border-radius:8px;
+  background:var(--card);align-items:center;justify-content:center;cursor:pointer}
+
+/* layout */
+.doc{max-width:1360px;margin:0 auto;padding:60px 24px 0;display:grid;grid-template-columns:236px 1fr 190px;gap:40px}
+@media(max-width:1180px){.doc{grid-template-columns:236px 1fr}.toc{display:none}}
+@media(max-width:900px){
+  .doc{grid-template-columns:1fr;gap:0}
+  .side{position:fixed;top:60px;left:0;bottom:0;width:270px;background:var(--card);z-index:90;
+    transform:translateX(-100%);transition:transform .3s cubic-bezier(.2,.7,.3,1);border-right:1px solid var(--line);
+    padding:20px 18px;overflow-y:auto}
+  .side.open{transform:none;box-shadow:0 0 60px rgba(11,11,12,.16)}
+  .burger{display:flex}
+}
+.side{position:sticky;top:60px;height:calc(100svh - 60px);overflow-y:auto;padding:26px 0 40px}
+.side h5{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.13em;color:var(--faint);
+  font-weight:700;margin:22px 0 9px}
+.side h5:first-child{margin-top:0}
+.side a{display:block;font-size:13.5px;color:var(--dim);padding:5px 10px;border-radius:6px;margin-bottom:1px;
+  border-left:2px solid transparent;transition:color .18s,background .18s,border-color .18s}
+.side a:hover{color:var(--ink);background:var(--wash)}
+.side a.on{color:var(--ink);font-weight:700;border-left-color:var(--y);background:var(--y-wash)}
+
+.main{padding:34px 0 90px;min-width:0}
+.toc{position:sticky;top:84px;height:max-content;padding:34px 0}
+.toc h5{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.13em;color:var(--faint);
+  font-weight:700;margin-bottom:11px}
+.toc a{display:block;font-size:12.5px;color:var(--faint);padding:4px 0;transition:color .18s}
+.toc a:hover,.toc a.on{color:var(--ink)}
+
+/* content */
+.eyebrow{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.16em;color:var(--y-ink);
+  font-weight:700;margin-bottom:12px}
+h1{font-size:clamp(30px,4.4vw,44px);letter-spacing:-.038em;font-weight:900;line-height:1.08;margin-bottom:14px}
+.sub{font-size:17px;color:var(--dim);margin-bottom:34px;line-height:1.65;max-width:660px}
+section{scroll-margin-top:84px;padding-bottom:52px}
+h2{font-size:26px;letter-spacing:-.03em;font-weight:900;margin:44px 0 14px;padding-top:14px;line-height:1.2}
+h2:first-of-type{margin-top:0}
+h3{font-size:17px;font-weight:800;letter-spacing:-.02em;margin:28px 0 10px}
+p{color:var(--dim);margin-bottom:14px;max-width:720px}
+p b,li b{color:var(--ink);font-weight:700}
+a.lnk{color:var(--ink);font-weight:600;border-bottom:1.5px solid var(--y);transition:background .2s}
+a.lnk:hover{background:var(--y-wash)}
+ul,ol{color:var(--dim);margin:0 0 16px 20px;max-width:720px}
+li{margin-bottom:8px}
+code{background:var(--wash);border:1px solid var(--line);padding:1px 5px;border-radius:4px;font-size:.88em;color:var(--ink)}
+.hr{height:1px;background:var(--line);margin:46px 0}
+
+.pre{background:#0D0D10;border-radius:12px;padding:16px 18px;overflow-x:auto;margin-bottom:16px;
+  font-family:var(--mono);font-size:12.5px;line-height:1.72;color:#D8D8E4;max-width:720px}
+.pre .c{color:#6A6A78}.pre .k{color:#FFD208}.pre .f{color:#7BB3FF}.pre .s{color:#8AE6A8}.pre .e{color:#FF7B72}
+
+.note{border-radius:12px;padding:16px 18px;margin-bottom:18px;font-size:14px;line-height:1.62;max-width:720px}
+.note p:last-child{margin-bottom:0}
+.note-y{background:var(--y-wash);border:1px solid var(--y-soft);color:var(--dim)}
+.note-y .nt{color:var(--y-ink)}
+.note-r{background:#FDF3F2;border:1px solid #F6D9D6;color:var(--dim)}
+.note-r .nt{color:var(--red)}
+.note-g{background:#F0FAF5;border:1px solid #D6EDE1;color:var(--dim)}
+.note-g .nt{color:var(--green)}
+.nt{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.12em;font-weight:700;
+  display:block;margin-bottom:7px}
+
+.tbl{width:100%;border-collapse:collapse;margin-bottom:18px;font-size:13.5px;max-width:720px}
+.tbl th{text-align:left;font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.11em;
+  color:var(--faint);font-weight:700;padding:9px 12px;border-bottom:1px solid var(--line-2);background:var(--wash)}
+.tbl td{padding:11px 12px;border-bottom:1px solid var(--line);color:var(--dim);vertical-align:top}
+.tbl td:first-child{color:var(--ink);font-weight:600;white-space:nowrap}
+.tbl tr:last-child td{border-bottom:none}
+.tbl code{font-size:11.5px}
+.wrapx{overflow-x:auto;margin-bottom:18px}
+
+.pill2{display:inline-block;font-family:var(--mono);font-size:9px;padding:2.5px 7px;border-radius:4px;
+  text-transform:uppercase;letter-spacing:.1em;font-weight:700;vertical-align:1px}
+.p-live{background:#E7F7EF;color:var(--green)}
+.p-sim{background:var(--y-soft);color:var(--y-ink)}
+.p-priv{background:var(--y-soft);color:var(--y-ink)}
+.p-pub{background:var(--wash);color:var(--dim);border:1px solid var(--line-2)}
+
+/* fn ref */
+.fn{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:14px 16px;margin-bottom:9px;max-width:720px}
+.fn-h{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:6px}
+.fn-n{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--ink)}
+.fn-d{font-size:13.5px;color:var(--dim);line-height:1.55}
+
+/* faq */
+.faq{border:1px solid var(--line);border-radius:12px;background:var(--card);margin-bottom:8px;max-width:760px;
+  overflow:hidden;transition:border-color .2s,box-shadow .2s}
+.faq[open]{border-color:var(--y);box-shadow:var(--sh)}
+.faq summary{padding:15px 18px;font-size:14.5px;font-weight:700;cursor:pointer;list-style:none;
+  display:flex;align-items:center;gap:12px;letter-spacing:-.015em;transition:background .18s}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary:hover{background:var(--wash)}
+.faq[open] summary{background:var(--y-wash)}
+.faq summary::after{content:'+';margin-left:auto;font-family:var(--mono);font-size:17px;color:var(--faint);
+  font-weight:400;transition:transform .25s;flex-shrink:0}
+.faq[open] summary::after{content:'−';color:var(--y-ink)}
+.faq-b{padding:4px 18px 18px;border-top:1px solid var(--line)}
+.faq-b p{font-size:14px;margin:14px 0 0}
+.faq-b p:first-child{margin-top:12px}
+.faq-b ul{font-size:14px;margin-top:12px}
+.faq-cat{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.13em;color:var(--faint);
+  font-weight:700;margin:30px 0 12px}
+
+/* glossary */
+.gl{display:grid;grid-template-columns:170px 1fr;gap:0;border-top:1px solid var(--line);max-width:760px}
+@media(max-width:620px){.gl{grid-template-columns:1fr;gap:2px}}
+.gl-t{padding:13px 0;font-weight:700;font-size:13.5px;border-bottom:1px solid var(--line)}
+.gl-d{padding:13px 0 13px 14px;font-size:13.5px;color:var(--dim);border-bottom:1px solid var(--line);line-height:1.55}
+@media(max-width:620px){.gl-t{border-bottom:none;padding-bottom:2px}.gl-d{padding-left:0}}
+
+.foot{border-top:1px solid var(--line);padding:28px 0 0;margin-top:20px;display:flex;justify-content:space-between;
+  gap:16px;flex-wrap:wrap;font-size:12.5px;color:var(--faint)}
+.scrim{position:fixed;inset:60px 0 0;background:rgba(11,11,12,.3);z-index:80;opacity:0;pointer-events:none;transition:opacity .3s}
+.scrim.on{opacity:1;pointer-events:auto}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="i-ghost" viewBox="0 0 24 24">
+    <path d="M12 2C7.6 2 4 5.6 4 10v10.2c0 .9 1 1.4 1.7.9l1.9-1.4c.4-.3.9-.3 1.3 0l1.5 1.1c.4.3.9.3 1.3 0l1.5-1.1c.4-.3.9-.3 1.3 0l1.5 1.1c.4.3.9.3 1.3 0l1.9-1.4c.7-.5.9-1 .9-1.9V10c0-4.4-3.6-8-8-8z" fill="currentColor"/>
+    <circle cx="9.2" cy="10.4" r="1.45" fill="#FBFBF9"/><circle cx="14.8" cy="10.4" r="1.45" fill="#FBFBF9"/>
+  </symbol>
+  <symbol id="i-gh" viewBox="0 0 24 24"><path d="M12 2C6.5 2 2 6.6 2 12.3c0 4.5 2.9 8.4 6.8 9.7.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.4-3.4-1.4-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.6 2.4 1.1 3 .9.1-.7.4-1.1.6-1.4-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.7 1a9.3 9.3 0 0 1 5 0c1.9-1.3 2.7-1 2.7-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.3 4.7-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10.2 10.2 0 0 0 22 12.3C22 6.6 17.5 2 12 2z" fill="currentColor"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+</defs></svg>
+
+<div class="top"><div class="top-in">
+  <div class="burger" id="burger"><svg width="18" height="18"><use href="#i-menu"/></svg></div>
+  <a href="/" class="brand"><svg width="22" height="22" style="color:var(--y)"><use href="#i-ghost"/></svg>GHOSTRAIL</a>
+  <span class="badge">Docs</span>
+  <div class="top-r">
+    <a href="https://github.com/Himess/ghostrail" class="btn btn-o"><svg width="13" height="13"><use href="#i-gh"/></svg>GitHub</a>
+    <a href="https://ghostrail-wine.vercel.app" class="btn btn-p">Launch app</a>
+  </div>
+</div></div>
+<div class="scrim" id="scrim"></div>
+
+<div class="doc">
+  <aside class="side" id="side">
+    <h5>Start here</h5>
+    <a href="#what">What is GhostRail?</a>
+    <a href="#why">Why it exists</a>
+    <a href="#how">How it works</a>
+    <h5>Concepts</h5>
+    <a href="#ctoken">Confidential token</a>
+    <a href="#router">Vault router</a>
+    <a href="#shares">Confidential shares</a>
+    <a href="#batches">Batches &amp; GhostGate</a>
+    <a href="#viewkeys">View keys</a>
+    <a href="#solvency">Solvency invariant</a>
+    <h5>Under the hood</h5>
+    <a href="#arch">Architecture</a>
+    <a href="#privacy">Privacy model</a>
+    <a href="#flows">User flows</a>
+    <a href="#contracts">Contract reference</a>
+    <h5>Reality</h5>
+    <a href="#security">Security</a>
+    <a href="#limits">Honest limits</a>
+    <a href="#deployments">Deployments</a>
+    <a href="#roadmap">Roadmap</a>
+    <h5>Reference</h5>
+    <a href="#faq">FAQ</a>
+    <a href="#glossary">Glossary</a>
+  </aside>
+
+  <main class="main">
+    <div class="eyebrow">Documentation</div>
+    <h1>GhostRail</h1>
+    <p class="sub">A confidential lending layer on Circle's Arc. Supply into the same public venues everyone
+      else uses, earn the same yield, and keep your position private. This is how it works — including the
+      parts that don't work yet.</p>
+
+    <!-- ===================== WHAT ===================== -->
+    <section id="what">
+      <h2>What is GhostRail?</h2>
+      <p>GhostRail is a <b>layer</b>, not a lending venue. It doesn't hold its own liquidity pool, set its own
+        interest rates, or decide which collateral is safe. It sits between you and an existing venue —
+        Morpho, Aave, or anything else that lends on Arc — and makes your position invisible on the way through.</p>
+      <p>The trade you're making is simple: you get the venue's exact yield, and in exchange for pooling with
+        other depositors you get amount privacy that is otherwise impossible on a public chain.</p>
+      <div class="note note-y"><span class="nt">In one sentence</span>
+        <p>Wrap USDC into <b>cUSDC</b> (a confidential dollar), deposit cUSDC into a router, receive confidential
+          shares. The router pools everyone, nets deposits against withdrawals, and supplies only the net to the
+          public venue as a single ordinary transfer. The venue sees one address. Never you.</p></div>
+
+      <h3>What it is not</h3>
+      <ul>
+        <li><b>Not a mixer.</b> You deposit and withdraw from the same address. We never claim your deposit
+          can't be linked to your withdrawal. We hide <em>sizes and positions</em>, not identity.</li>
+        <li><b>Not a venue.</b> We have no pool of our own, no curators, no risk parameters. Your credit risk
+          is the venue's, unchanged.</li>
+        <li><b>Not a custodian.</b> There is no admin key, no owner, no pause, no privileged path to funds.</li>
+        <li><b>Not private yet.</b> Arc's Privacy Sector isn't live. See <a href="#limits" class="lnk">Honest limits</a>.</li>
+      </ul>
+    </section>
+
+    <!-- ===================== WHY ===================== -->
+    <section id="why">
+      <h2>Why it exists</h2>
+      <p>On a public lending venue, the depositor table is public. Not leaked — <b>published</b>. Anyone can
+        read every address, every size, every entry, for free, with no permission and no trace.</p>
+      <p>For retail that's a curiosity. For anyone running size it's a live disadvantage: your position, your
+        entry, and the moment you start unwinding are all a public feed that others can trade against. This is
+        one of the main reasons institutional capital still can't come on-chain at scale — and why the loudest
+        request the big lending protocols report hearing is confidential DeFi.</p>
+      <p>The demand is not theoretical. A confidential USDC vault on Morpho climbed into the top-10 USDC vaults by
+        deposits within weeks of launch — capital is ready to move through confidential rails. GhostRail brings
+        that to Arc, generic across assets and venues rather than bound to one curated vault.</p>
+    </section>
+
+    <!-- ===================== HOW ===================== -->
+    <section id="how">
+      <h2>How it works</h2>
+      <p>Five steps. The first two are yours; the third is anyone's; the rest is arithmetic.</p>
+      <div class="wrapx"><table class="tbl">
+        <tr><th>Step</th><th>What happens</th><th>Who does it</th></tr>
+        <tr><td>1 · Shield</td><td><code>cToken.shield(amount)</code> — your USDC goes into the wrapper, you get
+          cUSDC 1:1. From here the balance lives inside the enclave.</td><td>You</td></tr>
+        <tr><td>2 · Deposit</td><td><code>cToken.setOperator(router)</code> then <code>router.deposit(amount)</code>
+          — the router pulls your <b>cUSDC</b> (never USDC) into the open batch.</td><td>You</td></tr>
+        <tr><td>3 · Execute</td><td><code>router.executeBatch()</code> — once the window closes, the batch nets
+          and the net crosses. Permissionless: anyone can call it.</td><td>Anyone</td></tr>
+        <tr><td>4 · Claim</td><td><code>router.claimShares(batchId)</code> — you pull your confidential shares at
+          that batch's clearing price.</td><td>You</td></tr>
+        <tr><td>5 · Exit</td><td><code>requestWithdraw(shares)</code> → execute → <code>claim(batchId)</code> →
+          cUSDC back. <code>unshield()</code> if you want plain USDC.</td><td>You</td></tr>
+      </table></div>
+      <div class="note note-y"><span class="nt">The key detail people miss</span>
+        <p>The router never touches plain USDC on the way in. You give it <b>cUSDC</b> and it gives you
+          <b>confidential shares</b>. Plain USDC only appears at one moment: when <code>executeBatch</code>
+          unshields the <em>net</em> and supplies it to the venue.</p></div>
+    </section>
+
+    <div class="hr"></div>
+
+    <!-- ===================== CONCEPTS ===================== -->
+    <section id="ctoken">
+      <h2>Confidential token (cUSDC)</h2>
+      <p>A generic wrapper that turns any ERC-20 into a confidential mirror of itself. cUSDC is the flagship;
+        the same contract with a different underlying gives cWETH, cEURC, cUSTB.</p>
+      <ul>
+        <li><b>1:1 and provable.</b> <code>underlying.balanceOf(wrapper) == totalShielded</code> holds at all
+          times. The total is public; the breakdown is not.</li>
+        <li><b>Boundary amounts are public.</b> <code>shield</code> and <code>unshield</code> emit their amounts —
+          they cross into and out of the public chain, so they must. Everything <em>inside</em> is not.</li>
+        <li><b>Confidential transfers emit no amount.</b> <code>ConfidentialTransfer(from, to)</code> carries the
+          parties, never the value.</li>
+        <li><b>Operator model.</b> Instead of an ERC-20 allowance you grant a time-bounded operator
+          (<code>setOperator(spender, until)</code>) — that's how the router pulls your cUSDC.</li>
+        <li><b>Immutable, no owner.</b> Nothing about it can be changed after deployment.</li>
+      </ul>
+      <p>The shape follows the ERC-7984 confidential-token interface. It is <em>not</em> a cryptographic
+        implementation: under APS the enclave provides confidentiality and the Solidity stays plain.</p>
+    </section>
+
+    <section id="router">
+      <h2>Vault router</h2>
+      <p>One router per <code>(asset, venue)</code> pair. It holds a <b>single</b> position in the public venue
+        on behalf of everyone, and tracks who owns what internally — confidentially.</p>
+      <p>The router is the only contract that crosses the boundary, and it does so once per batch. It is
+        immutable, has no owner, no pause and no privileged fund path. The auditor address it's deployed with
+        can only <em>read</em>; it can never move a token.</p>
+      <div class="pre"><span class="c">// what the router knows about you — all gated on read</span>
+<span class="k">mapping</span>(<span class="f">address</span> =&gt; <span class="f">uint256</span>) _shares;      <span class="c">// your confidential shares</span>
+<span class="k">mapping</span>(<span class="f">address</span> =&gt; <span class="f">uint256</span>) _costBasis;   <span class="c">// what you put in, for "earned"</span>
+<span class="k">mapping</span>(<span class="f">address</span> =&gt; <span class="f">uint256</span>) _reserved;    <span class="c">// shares locked in a pending exit</span>
+
+<span class="c">// what the world knows — public, always</span>
+<span class="f">uint256</span> <span class="k">public</span> totalShares;
+<span class="k">function</span> <span class="f">totalAssets</span>() <span class="k">public view</span>; <span class="c">// venue balance only</span>
+<span class="k">function</span> <span class="f">checkSolvency</span>() <span class="k">public view</span>; <span class="c">// (totalShares, backing)</span></div>
+    </section>
+
+    <section id="shares">
+      <h2>Confidential shares</h2>
+      <p>Your claim on the pool is a share balance, not an amount. Shares are minted at the batch's clearing
+        price and their value grows as the venue pays yield — an ERC-4626-style accounting model, but with the
+        per-user numbers private.</p>
+      <div class="pre"><span class="c">// minted at claim, priced at that batch's snapshot</span>
+shares = amount × (totalShares + <span class="k">1e3</span>) / (totalAssets + <span class="k">1</span>)
+
+<span class="c">// redeemed the other way</span>
+assets = shares × (totalAssets + <span class="k">1</span>) / (totalShares + <span class="k">1e3</span>)</div>
+      <p>Those constants are a <b>virtual offset</b>: 1,000 virtual shares against 1 virtual asset. They make the
+        classic first-depositor inflation attack unprofitable — an attacker can't donate their way into owning
+        the next depositor's money, because the offset dominates an empty pool.</p>
+      <p>Every division floors, and always in the protocol's favour. The dust that rounding leaves behind stays
+        in the pool as extra backing. It can never round the other way.</p>
+      <div class="note note-g"><span class="nt">Why totalAssets reads the venue only</span>
+        <p><code>totalAssets()</code> returns the <em>venue balance</em> — never the router's idle cUSDC. That
+          single choice closes the donation-inflation vector structurally: sending tokens to the router does not
+          move the share price, because idle tokens were never counted as backing.</p></div>
+    </section>
+
+    <section id="batches">
+      <h2>Batches &amp; GhostGate netting</h2>
+      <p>Inside the confidential zone, operations are instant. At the boundary — the one line where value becomes
+        public — they are batched. That's GhostGate.</p>
+      <h3>Lifecycle</h3>
+      <ul>
+        <li><b>Open.</b> Deposits and withdrawal requests queue into the current batch. You can
+          <code>cancelDeposit()</code> or <code>cancelWithdraw()</code> any time while it's open.</li>
+        <li><b>Executed.</b> Once <code>batchOpenedAt + batchWindow</code> has passed, anyone calls
+          <code>executeBatch()</code>. It snapshots the clearing price, nets, and crosses once.</li>
+        <li><b>Claimable.</b> You then pull: <code>claimShares(batchId)</code> for a deposit,
+          <code>claim(batchId)</code> for a withdrawal — both priced at that batch's stored snapshot.</li>
+      </ul>
+      <h3>What netting actually does</h3>
+      <p>Say a batch has 1,510,000 of deposits and 310,000 of withdrawal value. Without netting, the public
+        chain would see many transfers. With netting it sees exactly one:</p>
+      <div class="pre"><span class="c">net = deposits − withdrawalValue</span>
+net &gt; 0  →  unshield(net); venue.deposit(net)   <span class="c">// one supply</span>
+net &lt; 0  →  venue.withdraw(−net); shield(−net)  <span class="c">// one withdrawal</span>
+net = 0  →  <span class="s">nothing crosses at all</span></div>
+      <p>Withdrawals are funded from the deposits already sitting in the router; only the difference ever moves.
+        When deposits and withdrawals happen to match, <b>nothing touches the public chain</b> — the entire
+        batch settles inside the confidential zone.</p>
+      <div class="note note-y"><span class="nt">Why execution is O(1)</span>
+        <p><code>executeBatch</code> loops over nothing. It reads two running aggregates, mints/burns shares in
+          aggregate, crosses once, and advances. Users then <em>pull</em> their own share. That's deliberate: an
+          earlier design looped over batch participants, and an independent review found it could be griefed into
+          a permanent brick. See <a href="#security" class="lnk">Security</a>.</p></div>
+    </section>
+
+    <section id="viewkeys">
+      <h2>View keys &amp; selective disclosure</h2>
+      <p>Privacy that an auditor can't pierce is useless to an institution. Every account can appoint one
+        <b>observer</b> — <code>setObserver(address)</code> on the token, <code>grantViewKey</code> on the
+        ledger — who can read that account's confidential values exactly as the owner can.</p>
+      <p>This is the compliance story in one line: <b>invisible to the market, legible to your auditor</b>.
+        It's per-account and revocable (<code>setObserver(address(0))</code>). There is no global backdoor:
+        no key, no role, no address can read everyone.</p>
+      <div class="wrapx"><table class="tbl">
+        <tr><th>Caller</th><th><code>sharesOf(you)</code></th><th><code>positionOf(you)</code></th></tr>
+        <tr><td>You</td><td>✓ returns</td><td>✓ returns</td></tr>
+        <tr><td>Your observer</td><td>✓ returns</td><td>✓ returns</td></tr>
+        <tr><td>Anyone else</td><td>✗ <code>NotAuthorizedToView()</code></td><td>✗ <code>NotAuthorizedToView()</code></td></tr>
+      </table></div>
+    </section>
+
+    <section id="solvency">
+      <h2>The solvency invariant</h2>
+      <p>Privacy that can hide insolvency is a scam waiting to happen. So the aggregate is public and checkable
+        by anyone, at any time, without seeing a single position:</p>
+      <div class="pre"><span class="f">previewRedeem</span>(totalShares) <span class="k">≤</span> <span class="f">totalAssets</span>()</div>
+      <p>In words: everything the pool owes, priced at the current share price, is covered by what the venue
+        actually holds. <code>checkSolvency()</code> returns both numbers so you can verify it yourself.</p>
+      <p>This is not a claim — it's proven as a stateful fuzz invariant across 128,000 randomized calls, alongside
+        token conservation and a no-value-creation property.</p>
+    </section>
+
+    <div class="hr"></div>
+
+    <!-- ===================== ARCH ===================== -->
+    <section id="arch">
+      <h2>Architecture</h2>
+      <p>The whole design rests on one fact about Arc that's easy to miss: <b>Arc is not a private chain.</b>
+        It is a public EVM <em>and</em> a private one, side by side.</p>
+      <div class="wrapx"><table class="tbl">
+        <tr><th>Layer</th><th>What lives there</th></tr>
+        <tr><td>Public Arc EVM</td><td>The lending venues (Morpho, Aave, Arc-native protocols), plain USDC,
+          everything visible. USDC is the native gas token — users never hold ETH.</td></tr>
+        <tr><td>APS · private pEVM</td><td>A TEE-backed sector where contract state is sealed inside a hardware
+          enclave. GhostRail's accounting lives here. You write plain Solidity; the enclave provides the
+          confidentiality.</td></tr>
+        <tr><td>shield / unshield</td><td>The only boundary between them — atomic, same-block, and generic over
+          any Arc ERC-20. This is exactly where GhostRail nets.</td></tr>
+      </table></div>
+      <p>Same-block atomic composability is what makes the layer viable: a confidential contract can call a
+        public venue and settle in one transaction. Without it you'd need a bridge, and a bridge would leak the
+        timing that netting is designed to hide.</p>
+      <h3>Why TEE and not ZK or FHE</h3>
+      <p>All three can hide a balance. They differ in what you trust and what you pay:</p>
+      <div class="wrapx"><table class="tbl">
+        <tr><th>Model</th><th>Trust</th><th>Cost</th></tr>
+        <tr><td>ZK</td><td>Cryptography only</td><td>Circuits, proving time, and — for amount privacy — fixed
+          denominations, which drags you toward mixer semantics.</td></tr>
+        <tr><td>FHE</td><td>Cryptography only</td><td>Ciphertext types, a KMS, async decryption — powerful, but a
+          heavier stack to build and operate.</td></tr>
+        <tr><td>TEE (APS)</td><td>Hardware vendor + attestation</td><td>Almost none. Plain Solidity, native
+          composability. The trade is a hardware trust assumption instead of a purely cryptographic one.</td></tr>
+      </table></div>
+      <p>GhostRail takes the proven confidential-DeFi patterns — netting, the two-speed boundary, the honest
+        boundary table — onto the simpler substrate. We state the TEE trust assumption plainly rather than implying
+        cryptographic guarantees we don't have.</p>
+    </section>
+
+    <!-- ===================== PRIVACY ===================== -->
+    <section id="privacy">
+      <h2>Privacy model</h2>
+      <p>We hide the things an institution needs hidden and keep public the things solvency requires. Nothing
+        more, nothing less.</p>
+      <div class="wrapx"><table class="tbl">
+        <tr><th>Fact</th><th>Status</th></tr>
+        <tr><td>Your confidential balance</td><td><span class="pill2 p-priv">Private</span></td></tr>
+        <tr><td>Your shares, cost basis, earnings</td><td><span class="pill2 p-priv">Private</span></td></tr>
+        <tr><td>Who deposited how much, and when</td><td><span class="pill2 p-priv">Private</span></td></tr>
+        <tr><td>Your per-batch entry</td><td><span class="pill2 p-priv">Private</span></td></tr>
+        <tr><td>Shield / unshield amounts</td><td><span class="pill2 p-pub">Public</span></td></tr>
+        <tr><td>Total shielded, total shares, venue position</td><td><span class="pill2 p-pub">Public</span></td></tr>
+        <tr><td>The per-batch net (direction + amount)</td><td><span class="pill2 p-pub">Public</span></td></tr>
+        <tr><td>That an account exists and interacted</td><td><span class="pill2 p-pub">Public</span></td></tr>
+        <tr><td>The solvency invariant</td><td><span class="pill2 p-pub">Public</span></td></tr>
+      </table></div>
+      <h3>Operational privacy, not unlinkability</h3>
+      <p>We make a deliberately narrow claim. A mixer promises that nobody can link your deposit to your
+        withdrawal — which requires a large anonymity set from day one, fixed denominations, and carries
+        regulatory weight that a compliance-native product cannot absorb. We promise something smaller and
+        actually deliverable: <b>your size and your position are not readable</b>, while the aggregate stays
+        verifiable and your auditor stays authorized.</p>
+      <h3>Why pooling is forced, not chosen</h3>
+      <p>This is the load-bearing argument. A position that lives in a public contract has a public amount —
+        there's no way around that. So there are exactly two moves:</p>
+      <ol>
+        <li><b>Hide the owner</b> (a proxy holds the position). The amount is still public.</li>
+        <li><b>Hide the breakdown</b> (many owners share one position). The aggregate is public; who owns what
+          is not.</li>
+      </ol>
+      <p>If you want amount privacy, only (2) works. And (1) plus "make the amounts private too" just <em>is</em>
+        (2) with extra steps. Splitting one depositor across many proxies to disguise size has a name in AML —
+        <b>structuring</b> — and it's the last architecture a compliance-native product should adopt. So pooling
+        isn't a design preference. It's the mechanism.</p>
+    </section>
+
+    <!-- ===================== FLOWS ===================== -->
+    <section id="flows">
+      <h2>User flows</h2>
+      <h3>Getting USDC onto Arc (CCTP)</h3>
+      <p>If your USDC is on another chain, the Bridge screen uses <b>Circle's CCTP</b> via Bridge Kit: it burns
+        USDC on the source chain, waits for Circle's attestation, and mints <b>native</b> USDC on Arc. Not a
+        wrapped bridge asset — real USDC. This is a genuine, live Circle integration on Arc testnet.</p>
+      <div class="pre">Base Sepolia USDC
+   → burn (source)
+   → Circle attestation
+   → mint native USDC on Arc   <span class="c">← staged; not instant</span>
+   → shield → cUSDC
+   → deposit → confidential shares</div>
+
+      <h3>Depositing</h3>
+      <div class="pre"><span class="c">// 1 — become confidential</span>
+usdc.<span class="f">approve</span>(cUSDC, amount);
+cUSDC.<span class="f">shield</span>(amount);                     <span class="c">// public amount, one time</span>
+
+<span class="c">// 2 — let the router pull your cUSDC</span>
+cUSDC.<span class="f">setOperator</span>(router, block.timestamp + <span class="k">1 hours</span>);
+router.<span class="f">deposit</span>(amount);                    <span class="c">// queued into the open batch</span>
+
+<span class="c">// 3 — after the window closes (anyone can do this)</span>
+router.<span class="f">executeBatch</span>();
+
+<span class="c">// 4 — pull your shares</span>
+router.<span class="f">claimShares</span>(batchId);</div>
+
+      <h3>Withdrawing</h3>
+      <div class="pre">router.<span class="f">requestWithdraw</span>(shares);   <span class="c">// reserves them in the open batch</span>
+router.<span class="f">executeBatch</span>();            <span class="c">// after the window</span>
+router.<span class="f">claim</span>(batchId);            <span class="c">// cUSDC back to you</span>
+cUSDC.<span class="f">unshield</span>(amount);           <span class="c">// optional: back to plain USDC</span></div>
+
+      <h3>Reading your own position</h3>
+      <div class="pre">router.<span class="f">positionOf</span>(you)
+  → (shares, deposited, currentValue)   <span class="c">// earned = currentValue − deposited</span>
+
+<span class="c">// from any other address:</span>
+  → <span class="e">revert NotAuthorizedToView()</span></div>
+      <p>In the app this sits behind a <b>Sign to reveal</b> step: an EIP-712 signature proving you own the
+        balance. Today that gates the read client-side; under APS the same signature is what authorizes the
+        enclave to decrypt for you.</p>
+    </section>
+
+    <!-- ===================== CONTRACTS ===================== -->
+    <section id="contracts">
+      <h2>Contract reference</h2>
+      <h3>ConfidentialToken</h3>
+      <div class="fn"><div class="fn-h"><span class="fn-n">shield(uint256 amount)</span><span class="pill2 p-pub">Public amount</span></div>
+        <div class="fn-d">Pull the underlying, credit your confidential balance 1:1.</div></div>
+      <div class="fn"><div class="fn-h"><span class="fn-n">unshield(uint256 amount)</span><span class="pill2 p-pub">Public amount</span></div>
+        <div class="fn-d">Burn confidential balance, send the underlying back.</div></div>
+      <div class="fn"><div class="fn-h"><span class="fn-n">confidentialTransfer(address to, uint256 amount)</span><span class="pill2 p-priv">No amount emitted</span></div>
+        <div class="fn-d">Move confidential balance. The event carries the parties, never the value.</div></div>
+      <div class="fn"><div class="fn-h"><span class="fn-n">setOperator(address spender, uint64 until)</span></div>
+        <div class="fn-d">Time-bounded spending authority — how the router pulls your cUSDC.</div></div>
+      <div class="fn"><div class="fn-h"><span class="fn-n">confidentialBalanceOf(address)</span><span class="pill2 p-priv">Gated</span></div>
+        <div class="fn-d">Owner or observer only; everyone else reverts.</div></div>
+      <div class="fn"><div class="fn-h"><span class="fn-n">setObserver(address)</span></div>
+        <div class="fn-d">Appoint (or revoke, with <code>address(0)</code>) your view key.</div></div>
+      <div class="fn"><div class="fn-h"><span class="fn-n">totalShielded()</span><span class="pill2 p-pub">Public</span></div>
+        <div class="fn-d">The aggregate. Must always equal the wrapper's underlying balance.</div></div>
+
+      <h3>ConfidentialVaultRouter</h3>
+      <div class="fn"><div class="fn-h"><span class="fn-n">deposit(uint256 amount)</span></div>
+        <div class="fn-d">Queue cUSDC into the open batch. Requires operator approval first.</div></div>
+      <div class="fn"><div class="fn-h"><span class="fn-n">requestWithdraw(uint256 shares)</span></div>
+        <div class="fn-d">Reserve shares for exit in the open batch.</div></div>
+      <div class="fn"><div class="fn-h"><span class="fn-n">executeBatch()</span><span class="pill2 p-live">Permissionless</span></div>
+        <div class="fn-d">After the window: snapshot the clearing price, net, cross once, advance. O(1) — no loop.</div></div>
+      <div class="fn"><div class="fn-h"><span class="fn-n">claimShares(uint256 batchId)</span></div>
+        <div class="fn-d">Mint your share of an executed deposit batch at its stored snapshot price.</div></div>
+      <div class="fn"><div class="fn-h"><span class="fn-n">claim(uint256 batchId)</span></div>
+        <div class="fn-d">Collect cUSDC for an executed withdrawal at its stored snapshot price.</div></div>
+      <div class="fn"><div class="fn-h"><span class="fn-n">cancelDeposit() / cancelWithdraw()</span></div>
+        <div class="fn-d">Back out of the current batch while it's still open. Real, not a stub.</div></div>
+      <div class="fn"><div class="fn-h"><span class="fn-n">positionOf(address)</span><span class="pill2 p-priv">Gated</span></div>
+        <div class="fn-d">→ <code>(shares, deposited, currentValue)</code>. Owner or auditor only.</div></div>
+      <div class="fn"><div class="fn-h"><span class="fn-n">checkSolvency()</span><span class="pill2 p-pub">Public</span></div>
+        <div class="fn-d">→ <code>(totalShares, backingAssets)</code>. Verify the invariant yourself.</div></div>
+      <div class="fn"><div class="fn-h"><span class="fn-n">previewRedeem(uint256 shares)</span><span class="pill2 p-pub">Public</span></div>
+        <div class="fn-d">Price shares in assets at the current share price.</div></div>
+    </section>
+
+    <div class="hr"></div>
+
+    <!-- ===================== SECURITY ===================== -->
+    <section id="security">
+      <h2>Security</h2>
+      <h3>What's structurally impossible</h3>
+      <ul>
+        <li><b>We can't take your funds.</b> No owner, no admin, no pause, no upgrade, no privileged path. There
+          is no operator role, so there's nothing to compromise.</li>
+        <li><b>The auditor can't move anything.</b> The view key is read-only by construction.</li>
+        <li><b>Donations can't move the share price.</b> <code>totalAssets()</code> reads the venue balance only.</li>
+        <li><b>Rounding can't drain the pool.</b> Every division floors in the protocol's favour; dust accretes
+          as backing.</li>
+      </ul>
+      <h3>What's covered by tests</h3>
+      <p>56 tests across 7 suites, including 4 stateful fuzz invariants over 128,000 randomized calls: token
+        conservation, router solvency, share-price monotonicity under yield, and no value creation. Plus a global
+        event scan asserting no confidential value ever appears in a log, and a three-way access test on every
+        gated surface (owner ✓ / auditor ✓ / stranger ✗).</p>
+      <h3>A finding we found and fixed</h3>
+      <div class="note note-r"><span class="nt">Remediated · was HIGH</span>
+        <p>An earlier <code>executeBatch</code> looped over every participant in the batch. Because there was no
+          minimum deposit, an attacker could queue 1-wei deposits from many addresses until execution exceeded
+          the block gas limit. Since <code>currentBatch</code> only advanced at the <em>end</em> of a successful
+          execution, that would have bricked the router permanently — with no admin to rescue it.</p>
+        <p>The fix was architectural, not a patch: the router became <b>pull-based</b>. Execution is now O(1) —
+          it snapshots the clearing price and adjusts aggregates — and users pull their own share afterwards.
+          The loop is gone, so the attack has nothing to grow. A regression test proves execution stays in
+          bounded gas with hundreds of distinct depositors.</p></div>
+      <h3>What an audit still has to cover</h3>
+      <ul>
+        <li>Share math under adversarial sequencing across many batches.</li>
+        <li>The venue adapter boundary once real Morpho/Aave adapters replace the mock.</li>
+        <li>The APS assumptions themselves — enclave attestation, view-key enforcement, revert sanitization.</li>
+      </ul>
+      <div class="note note-y"><span class="nt">The order we will not reverse</span>
+        <p>An independent audit completes <b>before</b> mainnet real funds — not after. The vault router is
+          marked <code>AUDIT-GATED</code> in the source for exactly this reason.</p></div>
+    </section>
+
+    <!-- ===================== LIMITS ===================== -->
+    <section id="limits">
+      <h2>Honest limits</h2>
+      <p>Everything above describes the design. Here is what is actually true today.</p>
+      <div class="note note-y"><span class="nt">Privacy is notional right now</span>
+        <p><b>APS is not live.</b> On Arc testnet the confidential values sit in ordinary storage — readable with
+          <code>eth_getStorageAt</code> — and the <code>msg.sender</code> gating isn't enforced against an
+          <code>eth_call</code> with a spoofed <code>from</code>. The privacy is architectural, not yet
+          cryptographic. Every place production diverges is marked <code>// APS-SWAP</code> in the source.</p>
+        <p><b>What is live:</b> the protocol logic, deployed and running on Arc testnet; the USDC market wrapping
+          real Arc testnet USDC; and a real Circle CCTP bridge. Those are not simulated.</p></div>
+      <ul>
+        <li><b>Anonymity set.</b> A batch with one participant is a batch whose net is that participant's amount.
+          Privacy scales with participation — which is why the production batch window targets 12–24h rather than
+          the 60s used on the preview, and why we'd rather run a few deep markets than many thin ones.</li>
+        <li><b>Boundary amounts are public.</b> Shield and unshield sizes are visible. A large shield followed
+          closely by a matching batch net is correlatable. Netting and a long window mitigate this; they don't
+          erase it.</li>
+        <li><b>Custody risk is real.</b> Pooling means a contract or enclave bug can drain the pool. This cannot
+          be eliminated, only reduced (audit, immutability, the solvency invariant) and disclosed.</li>
+        <li><b>Venues are mocked on testnet.</b> Morpho and Aave aren't deployed on Arc yet — Aave V4 is in Arc
+          governance. Only <code>cUSDC · Morpho</code> wraps real USDC; the other markets are labelled
+          <span class="pill2 p-sim">Preview · simulated</span>.</li>
+        <li><b>TEE trust.</b> APS confidentiality rests on hardware attestation, not on cryptography alone. That's
+          a real assumption, and it's the price of the simplicity.</li>
+      </ul>
+      <p><b>The claim, precisely:</b> protocol live on Arc testnet, USDC-integrated, architected for APS —
+        confidentiality activates when APS ships.</p>
+    </section>
+
+    <!-- ===================== DEPLOYMENTS ===================== -->
+    <section id="deployments">
+      <h2>Deployments</h2>
+      <div class="wrapx"><table class="tbl">
+        <tr><th>Key</th><th>Value</th></tr>
+        <tr><td>Network</td><td>Arc Testnet</td></tr>
+        <tr><td>Chain ID</td><td><code>5042002</code></td></tr>
+        <tr><td>RPC</td><td><code>https://rpc.testnet.arc.network</code></td></tr>
+        <tr><td>Explorer</td><td><a class="lnk" href="https://testnet.arcscan.app">testnet.arcscan.app</a></td></tr>
+        <tr><td>USDC (native gas)</td><td><code>0x3600…0000</code> — real Circle testnet USDC</td></tr>
+        <tr><td>Markets</td><td>10 <code>(asset, venue)</code> routers · 1 live, 9 simulated</td></tr>
+      </table></div>
+      <p>Live addresses and the smoke-test transaction hashes are in
+        <a class="lnk" href="https://github.com/Himess/ghostrail/blob/main/deployments/arc-testnet.json">deployments/arc-testnet.json</a>
+        — each market carries an explicit <code>simulated</code> flag. Verify them on Arcscan; don't take our word.</p>
+    </section>
+
+    <!-- ===================== ROADMAP ===================== -->
+    <section id="roadmap">
+      <h2>Roadmap</h2>
+      <h3>v1 — live now</h3>
+      <p>Confidential deposit and yield. Generic token + router, multi-asset markets, GhostGate netting,
+        zero admin, public solvency invariant, view keys. On Arc testnet with real USDC and real CCTP.</p>
+      <h3>v2 — after an independent audit</h3>
+      <ul>
+        <li><b>Real venue adapters</b> — Morpho and Aave once they're on Arc mainnet. Aave V4 is already in Arc
+          governance with a USDC/EURC/cirBTC scope. We're built to integrate on day one.</li>
+        <li><b>Same-asset leverage</b> — loop a vault-share position. Collateral and debt are the same asset
+          family, so there's no cross-asset price-gap risk and the share price is monotone. The leverage ratio
+          itself stays private. It's the clean, low-tail-risk way to add leverage.</li>
+        <li><b>Institutional compliance tier</b> — auditor tooling on top of the view-key primitive: audit logs,
+          report export, disclosure flows. This is the revenue layer. Retail stays near-free; the fee is a small
+          yield-share, never a fee on principal or on shielding.</li>
+      </ul>
+      <h3>v3 — research / demand-gated</h3>
+      <ul>
+        <li><b>Cross-asset borrowing</b> — deferred, and honestly so. Pooled cross-asset collateral carries an
+          irreducible tail risk: if price gaps faster than internal liquidation can execute, the venue liquidates
+          the aggregate and safe users share the loss. Ships only with a liquidation design that stays ahead of
+          the external venue.</li>
+        <li><b>Confidential yield aggregator</b> — auto-routing to the best confidential yield. Deferred because
+          it fights the privacy model: aggregation splits liquidity across venues, and thinner pools mean weaker
+          anonymity sets. The tension has to be resolved before it's safe to ship.</li>
+      </ul>
+      <h3>Venue selection policy</h3>
+      <p>Not all venues are equally safe to build on. Aave-style pools are structurally permissionless — supply
+        is open to anyone and only a global supply cap applies. Morpho <b>markets</b> are permissionless and
+        immutable too, and governance cannot halt them. Morpho <b>curated vaults</b> are different: a curator can
+        install gate contracts that block specific addresses from depositing. So:</p>
+      <ol>
+        <li>Aave-style pools first — permissionless, and the risk parameters are governance's job, not ours.</li>
+        <li>Morpho markets direct second — permissionless and immutable, with an explicit disclosure that
+          supplier bad-debt risk is isolated to the chosen market.</li>
+        <li>Curated vaults only where the gates are abdicated to <code>address(0)</code>, i.e. permanently
+          permissionless.</li>
+      </ol>
+    </section>
+
+    <div class="hr"></div>
+
+    <!-- ===================== FAQ ===================== -->
+    <section id="faq">
+      <h2>FAQ</h2>
+
+      <div class="faq-cat">The obvious suspicion</div>
+      <details class="faq"><summary>Isn't this just a mixer?</summary><div class="faq-b">
+        <p>No, and the difference is structural rather than cosmetic.</p>
+        <p>A mixer breaks the link between deposit and withdrawal: you put in from address A and take out to
+          address B, and the whole point is that nobody can tell which deposit was yours. That requires fixed
+          denominations (because amounts identify you) and a large anonymity set.</p>
+        <p>GhostRail does none of that. You deposit and withdraw <b>from the same address</b>. The link is never
+          broken — anyone can see that you shielded, and that you interacted. What's hidden is your <b>share of
+          the pool</b>, your position size, and your entry. And your auditor can be given a key that reveals all
+          of it — the exact opposite of a mixer's guarantee.</p>
+        <p>Short version: a mixer hides <em>who</em>. We hide <em>how much</em>.</p>
+      </div></details>
+
+      <details class="faq"><summary>Couldn't you do this on any public chain, without APS?</summary><div class="faq-b">
+        <p>Not with plain pooling — and this is the part that surprises people.</p>
+        <p>If you built a router on a normal public chain and pooled everyone's USDC, an observer wouldn't bother
+          reading the venue. They'd read <b>your router's</b> events instead: "0xB81a deposited 8M into the
+          router." One layer up, same information. Pooling by itself hides nothing.</p>
+        <p>For the pool to actually hide anything, the per-user balances must be genuinely unreadable. That needs
+          a confidentiality substrate: ZK, FHE, or a TEE. APS isn't the only option — it's the simplest one, and
+          it's native to Arc with same-block atomic composability into public venues.</p>
+      </div></details>
+
+      <details class="faq"><summary>Can you steal my funds?</summary><div class="faq-b">
+        <p>Not by design, and not by key: the contracts are immutable and there is no owner, no admin, no pause
+          and no upgrade path. There is no privileged function that moves user funds. The auditor role can only
+          read.</p>
+        <p>What remains is honest to state: a <b>bug</b> in the router or the enclave could drain the pool. That
+          risk exists in every pooled system and cannot be engineered away — only reduced (audit, immutability,
+          the public solvency invariant) and disclosed. That's why real funds wait for an independent audit.</p>
+      </div></details>
+
+      <div class="faq-cat">Mechanics</div>
+      <details class="faq"><summary>Do you take my USDC or my cUSDC?</summary><div class="faq-b">
+        <p><b>cUSDC.</b> The router never touches plain USDC on the way in. You shield first (USDC → cUSDC), grant
+          the router an operator allowance, and it pulls <b>cUSDC</b>. In return you get confidential shares —
+          not cUSDC back.</p>
+        <p>Plain USDC appears at exactly one moment: <code>executeBatch</code> unshields the <em>net</em> and
+          supplies that to the venue. On the way out the reverse happens — the router shields what it withdraws,
+          and pays you in cUSDC.</p>
+      </div></details>
+
+      <details class="faq"><summary>Why do I have to wait for a batch? Why not deposit instantly?</summary><div class="faq-b">
+        <p>Because instant means visible. If your deposit crossed to the venue the moment you made it, the public
+          chain would show a transfer with your exact amount, and the whole exercise would be pointless.</p>
+        <p>Batching lets deposits and withdrawals cancel each other so only the <em>difference</em> crosses. It
+          also decorrelates timing: with a long window, your action and the public movement aren't the same
+          event. The cost is latency — that's the honest trade.</p>
+        <p>You can always <code>cancelDeposit()</code> while the batch is still open.</p>
+      </div></details>
+
+      <details class="faq"><summary>What does the venue actually see?</summary><div class="faq-b">
+        <p>One address — the router — supplying and withdrawing ordinary amounts. From Morpho's or Aave's
+          perspective GhostRail is a single depositor with a single position. There's nothing exotic about the
+          interaction; it's a normal supply.</p>
+      </div></details>
+
+      <details class="faq"><summary>Is my yield lower because I go through you?</summary><div class="faq-b">
+        <p>No. Your shares accrue the venue's yield 1:1. We don't produce the yield and we don't skim it in v1 —
+          there is no fee in the deployed contracts.</p>
+        <p>When a fee does arrive (v2), it will be a small share of <em>yield</em>, never a fee on principal and
+          never a fee on shielding. A fee on shielding would be a tax on money that hasn't earned anything yet —
+          and users could bypass it by using Arc's native shield directly anyway.</p>
+      </div></details>
+
+      <details class="faq"><summary>What happens if I'm the only one in a batch?</summary><div class="faq-b">
+        <p>Then the batch's net is your amount, and the privacy of that batch is weak. We say this plainly rather
+          than pretending otherwise: privacy scales with participation.</p>
+        <p>Mitigations are structural — a long production window (12–24h) so more participants accumulate, and
+          a preference for a few deep markets over many thin ones. But in a nearly-empty pool, an observer
+          correlating your shield with the batch net will often be right.</p>
+      </div></details>
+
+      <details class="faq"><summary>Can I lose money to rounding?</summary><div class="faq-b">
+        <p>Not meaningfully, and never in the protocol's disfavour. Every division floors toward the pool, so the
+          sum of what everyone can claim is always ≤ what the pool holds. The remainder — dust, at the 1e-6 level
+          — stays as extra backing.</p>
+      </div></details>
+
+      <div class="faq-cat">Privacy</div>
+      <details class="faq"><summary>Is my position private right now?</summary><div class="faq-b">
+        <p><b>No.</b> APS isn't live, so on Arc testnet the values live in normal storage and can be read directly
+          with <code>eth_getStorageAt</code>. The gating is architectural today, not cryptographic.</p>
+        <p>What <em>is</em> live: the protocol logic, real USDC, real CCTP. When APS ships, the same contracts
+          become genuinely confidential — that's what the <code>// APS-SWAP</code> markers in the source point at.
+          We'd rather say this than let you find out later.</p>
+      </div></details>
+
+      <details class="faq"><summary>Who can see my position?</summary><div class="faq-b">
+        <p>Under APS: you, and whoever you appoint as your observer (your auditor, your regulator, your fund
+          admin). Nobody else — not us, not the validators, not the venue.</p>
+        <p>There is no global view key. No address can read everyone. Disclosure is per-account and revocable.</p>
+      </div></details>
+
+      <details class="faq"><summary>If shield amounts are public, what's actually hidden?</summary><div class="faq-b">
+        <p>Shielding says "this account moved X dollars into the confidential zone" — once, at the boundary. It
+          doesn't say what you did with it: how much you supplied, to which venue, at what price, when you
+          entered, what you've earned, or when you're leaving. Those are the facts that let someone trade against
+          you, and those stay inside.</p>
+        <p>It's the difference between knowing someone walked into a bank and knowing their balance, their
+          positions and their exit plan.</p>
+      </div></details>
+
+      <details class="faq"><summary>What happens if APS never ships?</summary><div class="faq-b">
+        <p>Then GhostRail on Arc stays what it is today: a working, deployed lending router without the
+          confidentiality. The value proposition depends on APS, and we don't hide that dependency.</p>
+        <p>The design isn't wasted, though — the patterns are substrate-portable by design, which is what makes
+          them straightforward to carry onto whatever confidentiality layer ships.</p>
+      </div></details>
+
+      <div class="faq-cat">Design choices</div>
+      <details class="faq"><summary>Why not run your own vault instead of using Morpho/Aave?</summary><div class="faq-b">
+        <p>Because our own vault would need its own liquidity, and bootstrapping liquidity from zero is the
+          two-sided cold-start trap that kills most lending launches. Nobody supplies to an empty pool, and
+          nobody borrows from one either.</p>
+        <p>The incumbents' liquidity, curators, borrowers and trust took years to build. We inherit all of it and
+          add the one thing it lacks. That's the whole strategy: <b>layer, not venue</b>.</p>
+      </div></details>
+
+      <details class="faq"><summary>Why is there no borrowing?</summary><div class="faq-b">
+        <p>Cross-asset borrowing against pooled collateral has an irreducible tail risk. If the price gaps faster
+          than our internal liquidation can execute, the <em>venue</em> liquidates the router's aggregate position —
+          and users who were nowhere near their own liquidation threshold share the loss.</p>
+        <p>Conservative buffers shrink that risk; they don't remove it. A user's priorities are safety first,
+          yield second, privacy third — a product that trades safety for privacy has the order wrong. So borrowing
+          waits (v3), while <b>same-asset leverage</b> (v2) is clean: same asset family, no cross-asset gap,
+          monotone share price.</p>
+      </div></details>
+
+      <details class="faq"><summary>Why not a mixer, if it's more private?</summary><div class="faq-b">
+        <p>Two reasons, and either is sufficient. First, a mixer's guarantee needs a large anonymity set on day
+          one — which a new protocol doesn't have, making early users <em>less</em> private, not more. Second,
+          unlinkability is regulatory poison for a product whose whole thesis is compliance-native institutional
+          capital on Circle's chain.</p>
+        <p>Institutions aren't asking to disappear. They're asking not to be front-run while staying auditable.
+          That's a different product.</p>
+      </div></details>
+
+      <details class="faq"><summary>Which venues can you support?</summary><div class="faq-b">
+        <p>Any that lend on Arc. The router takes an <code>ILendingVenue</code> adapter, so it isn't bound to two
+          names — Morpho and Aave are the first targets because they're the largest and because Aave V4 is already
+          in Arc governance. Arc-native protocols slot in the same way.</p>
+        <p>One caveat worth knowing: Morpho's <em>curated vaults</em> can install gate contracts that block
+          specific depositors. Morpho <em>markets</em> and Aave pools cannot. See the venue selection policy in
+          <a href="#roadmap" class="lnk">Roadmap</a>.</p>
+      </div></details>
+
+      <details class="faq"><summary>Why 5 assets? Why not everything?</summary><div class="faq-b">
+        <p>Because liquidity fragments privacy. Every <code>(asset, venue)</code> pair is its own pool with its own
+          anonymity set — ten thin markets are ten weak ones. The architecture has no ceiling; the deployment
+          should, at least until there's enough participation to justify each pool.</p>
+      </div></details>
+
+      <div class="faq-cat">Project</div>
+      <details class="faq"><summary>How is this different from a single confidential vault?</summary><div class="faq-b">
+        <p>A single confidential vault is one curated market: deposit, earn that strategy's yield, one asset, one
+          venue. That shape works and has already proven the demand for private on-chain lending.</p>
+        <p>GhostRail is a <b>generic layer</b> rather than a single vault: any ERC-20, any venue, on Arc, with the
+          selective-disclosure surface built in from the start. Fewer moving parts, broader surface.</p>
+      </div></details>
+
+      <details class="faq"><summary>Is the code open source? Audited?</summary><div class="faq-b">
+        <p>Open source, MIT, on <a class="lnk" href="https://github.com/Himess/ghostrail">GitHub</a> — contracts,
+          tests, deploy scripts and frontend.</p>
+        <p><b>Not independently audited yet.</b> We ran our own review and it found a real HIGH — the
+          <code>executeBatch</code> DoS described in <a href="#security" class="lnk">Security</a> — which we fixed
+          architecturally. An independent audit is the gate before real funds on mainnet, not something we'll do
+          afterwards.</p>
+      </div></details>
+
+      <details class="faq"><summary>Which Circle products does GhostRail use?</summary><div class="faq-b">
+        <ul>
+          <li><b>USDC</b> <span class="pill2 p-live">Live</span> — the flagship market wraps real Arc testnet USDC;
+            it's also the gas token, so users never hold ETH.</li>
+          <li><b>CCTP</b> <span class="pill2 p-live">Live</span> — cross-chain onboarding via Circle's Bridge Kit:
+            burn on the source chain, Circle attestation, native mint on Arc.</li>
+          <li><b>EURC</b> — via the Euro market.</li>
+          <li><b>Gateway, Paymaster</b> — on the roadmap, not claimed as integrated.</li>
+        </ul>
+      </div></details>
+    </section>
+
+    <!-- ===================== GLOSSARY ===================== -->
+    <section id="glossary">
+      <h2>Glossary</h2>
+      <div class="gl">
+        <div class="gl-t">Arc</div><div class="gl-d">Circle's stablecoin-native L1. USDC is the gas token. Public EVM plus a private sector (APS).</div>
+        <div class="gl-t">APS</div><div class="gl-d">Arc Privacy Sector — a TEE-backed private EVM where contract state is sealed inside a hardware enclave.</div>
+        <div class="gl-t">TEE</div><div class="gl-d">Trusted Execution Environment. A hardware enclave that runs code with sealed memory and proves what it's running via attestation.</div>
+        <div class="gl-t">cUSDC</div><div class="gl-d">Confidential USDC. A 1:1 wrapper whose balances are readable only by the owner and their observer.</div>
+        <div class="gl-t">Shield / unshield</div><div class="gl-d">Crossing into or out of the confidential zone. The amounts are public; that's the boundary.</div>
+        <div class="gl-t">GhostGate</div><div class="gl-d">The netting mechanism at the public boundary: deposits cancel withdrawals, only the net crosses.</div>
+        <div class="gl-t">Batch</div><div class="gl-d">A window during which deposits and withdrawals queue. Open → Executed → Claimable.</div>
+        <div class="gl-t">Net</div><div class="gl-d">Deposits minus withdrawal value in one batch. The only quantity that touches the public venue.</div>
+        <div class="gl-t">Confidential share</div><div class="gl-d">Your private claim on the pool. Value grows with venue yield; the balance is gated on read.</div>
+        <div class="gl-t">View key / observer</div><div class="gl-d">An address you authorize to read your confidential values. Per-account, revocable, read-only.</div>
+        <div class="gl-t">Solvency invariant</div><div class="gl-d"><code>previewRedeem(totalShares) ≤ totalAssets()</code> — public, checkable, fuzz-proven.</div>
+        <div class="gl-t">Virtual offset</div><div class="gl-d">1,000 virtual shares against 1 virtual asset, making first-depositor inflation attacks unprofitable.</div>
+        <div class="gl-t">Anonymity set</div><div class="gl-d">How many participants your amount hides among. Small set, weak privacy.</div>
+        <div class="gl-t">Operational privacy</div><div class="gl-d">Hiding sizes and positions while staying linkable and auditable — as opposed to unlinkability.</div>
+        <div class="gl-t">Structuring</div><div class="gl-d">Splitting one flow into many to disguise size. An AML red flag — and why we don't use per-user proxies.</div>
+        <div class="gl-t">CCTP</div><div class="gl-d">Circle's Cross-Chain Transfer Protocol. Burns USDC on one chain, mints native USDC on another.</div>
+        <div class="gl-t">APS-SWAP</div><div class="gl-d">A source marker at every point where the testnet simulation diverges from production APS.</div>
+      </div>
+    </section>
+
+    <div class="foot">
+      <span>© 2026 GhostRail · MIT · <a class="lnk" href="https://github.com/Himess/ghostrail">GitHub</a></span>
+      <span>Testnet preview — APS not yet live. Not affiliated with Circle, Morpho, or Aave.</span>
+    </div>
+  </main>
+
+  <aside class="toc">
+    <h5>On this page</h5>
+    <div id="toc-list"></div>
+  </aside>
+</div>
+
+<script>
+// mobile sidebar
+const side=document.getElementById('side'),burger=document.getElementById('burger'),scrim=document.getElementById('scrim');
+const close=()=>{side.classList.remove('open');scrim.classList.remove('on')};
+burger.onclick=()=>{side.classList.toggle('open');scrim.classList.toggle('on')};
+scrim.onclick=close;
+side.querySelectorAll('a').forEach(a=>a.addEventListener('click',close));
+
+// build "on this page" from h2s
+const secs=[...document.querySelectorAll('main section')];
+const tl=document.getElementById('toc-list');
+secs.forEach(s=>{
+  const h=s.querySelector('h2'); if(!h) return;
+  const a=document.createElement('a'); a.href='#'+s.id; a.textContent=h.textContent; a.dataset.for=s.id;
+  tl.appendChild(a);
+});
+
+// active section highlight (sidebar + toc)
+const links=[...document.querySelectorAll('.side a'),...document.querySelectorAll('.toc a')];
+const mark=id=>links.forEach(a=>a.classList.toggle('on',a.getAttribute('href')==='#'+id));
+const so=new IntersectionObserver(es=>{
+  const vis=es.filter(e=>e.isIntersecting).sort((a,b)=>a.boundingClientRect.top-b.boundingClientRect.top);
+  if(vis.length) mark(vis[0].target.id);
+},{rootMargin:'-84px 0px -70% 0px',threshold:0});
+secs.forEach(s=>so.observe(s));
+
+// open a FAQ if linked directly
+if(location.hash){const t=document.querySelector(location.hash);if(t&&t.tagName==='DETAILS')t.open=true}
+</script>
+</body>
+</html>

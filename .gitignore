@@ -19,6 +19,8 @@ frontend/.vercel/
 
 # Docs
 docs/
+# ...but keep the public marketing site's docs page (static, part of the site)
+!site/docs/
 
 # Dotenv file
 .env
