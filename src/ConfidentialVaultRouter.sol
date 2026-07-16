@@ -43,6 +43,7 @@ contract ConfidentialVaultRouter is ReentrancyGuard {
     // --- confidential state (APS-SWAP: pEVM-encrypted on Arc; gated on read; never emitted) ---
     mapping(address => uint256) private _shares; // per-user confidential shares (claimed)
     mapping(address => uint256) private _reservedShares; // shares locked in a not-yet-claimed withdrawal
+    mapping(address => uint256) private _costBasis; // cUSDC put in for claimed shares — DISPLAY-ONLY (never enters share math)
 
     // --- public aggregate (D6) ---
     uint256 public totalShares;
@@ -214,6 +215,7 @@ contract ConfidentialVaultRouter is ReentrancyGuard {
         _pendingDeposit[batchId][msg.sender] = 0;
         uint256 sh = Math.mulDiv(amt, bi.sharesSnap, bi.assetsSnap); // floor; totalShares already minted
         _shares[msg.sender] += sh;
+        _costBasis[msg.sender] += amt; // DISPLAY-ONLY: the cUSDC they put in becomes their basis (never touches share math)
         emit SharesClaimed(msg.sender, batchId);
     }
 
@@ -225,7 +227,12 @@ contract ConfidentialVaultRouter is ReentrancyGuard {
         if (s == 0) revert NothingToClaim();
         _pendingWithdraw[batchId][msg.sender] = 0;
         uint256 assetsOut = Math.mulDiv(s, bi.assetsSnap, bi.sharesSnap); // floor
-        _shares[msg.sender] -= s; // finalize the burn against the user's balance
+        // DISPLAY-ONLY basis release, proportional to the shares being burned. Read shares BEFORE decrementing.
+        // s <= _reservedShares <= _shares, so userShares >= s > 0 (no div-by-zero) and basisOut <= _costBasis.
+        uint256 userShares = _shares[msg.sender];
+        uint256 basisOut = Math.mulDiv(_costBasis[msg.sender], s, userShares); // floor
+        _costBasis[msg.sender] -= basisOut;
+        _shares[msg.sender] = userShares - s; // finalize the burn against the user's balance
         _reservedShares[msg.sender] -= s;
         cToken.confidentialTransfer(msg.sender, assetsOut);
         emit Claimed(msg.sender, batchId);
@@ -261,6 +268,21 @@ contract ConfidentialVaultRouter is ReentrancyGuard {
     function sharesOf(address account) external view returns (uint256) {
         _requireCanView(account);
         return _shares[account];
+    }
+
+    /// @notice The caller's (or the auditor's) position: shares held, what was put in, what it's worth now.
+    ///         Confidential — gated exactly like `sharesOf`. `earned` is left to the caller:
+    ///         earned = currentValue - deposited (computed off-chain; may be 0 or negative pre-yield).
+    // APS-SWAP: enclave-enforced against a signed view key on Arc; notional here.
+    function positionOf(address account)
+        external
+        view
+        returns (uint256 shares, uint256 deposited, uint256 currentValue)
+    {
+        _requireCanView(account);
+        shares = _shares[account];
+        deposited = _costBasis[account];
+        currentValue = previewRedeem(shares);
     }
 
     /// @notice Batches in which `account` still has a pending deposit or withdrawal (for the claim UI).

@@ -5,12 +5,14 @@ import { css, cssm } from "@/lib/css";
 import { useToast } from "@/components/Toast";
 import { TokenIcon, VenueLogo, CuratorChip } from "@/components/TokenIcon";
 import { useNav } from "@/lib/nav";
-import { useConfToken, useMarket, useNowSec } from "@/lib/hooks";
-import { useReveal, RevealNote } from "@/lib/useReveal";
+import { useConfToken, useMarket, useBatchCountdown } from "@/lib/hooks";
+import { useReveal, RevealNote, REVEAL_HELP } from "@/lib/useReveal";
 import { DOTS, fmtUnits, toUnits, mmss, errMsg } from "@/lib/format";
 import { assetMeta, ASSET_LIST, venueMeta, type AssetMeta, type VenueMeta } from "@/lib/markets";
 import { EXPLORER, type Hex } from "@/lib/addresses";
 import { ctokenAbi, routerAbi } from "@/lib/abis";
+import { useActivity, marketKey, type ActivityRecord } from "@/lib/activity";
+import { ActivityLog } from "@/components/ActivityLog";
 
 // The honest framing for the whole screen: this is a preview of an Arc-mainnet deployment routing into the
 // real Morpho / Aave venues. On testnet the venues are mocks.
@@ -18,7 +20,7 @@ const HONESTY =
   "Preview · simulating an Arc-mainnet deployment against Morpho/Aave · not affiliated with Morpho, Aave, or Steakhouse";
 
 // One pending/executed batch entry for the connected user: claim shares / underlying, or cancel while open.
-function BatchEntry({ asset, router, batchId, refresh }: { asset: AssetMeta; router: Hex; batchId: bigint; refresh: () => void }) {
+function BatchEntry({ asset, router, batchId, refresh, onActivity }: { asset: AssetMeta; router: Hex; batchId: bigint; refresh: () => void; onActivity: (rec: Omit<ActivityRecord, "ts">) => void }) {
   const { address } = useAccount();
   const pub = usePublicClient();
   const push = useToast();
@@ -39,7 +41,13 @@ function BatchEntry({ asset, router, batchId, refresh }: { asset: AssetMeta; rou
     try {
       const h = await writeContractAsync({ address: router, abi: routerAbi, functionName: fn, args: fn.startsWith("cancel") ? [] : [batchId] });
       await pub!.waitForTransactionReceipt({ hash: h });
-      push(ok, "ok"); refresh();
+      push(ok, "ok");
+      const bid = batchId.toString();
+      if (fn === "claimShares") onActivity({ action: "claimShares", amount: sh.toString(), asset: shareSym, txHash: h, batchId: bid });
+      else if (fn === "claim") onActivity({ action: "claim", amount: fmtUnits(cs, asset.decimals), asset: asset.symbol, txHash: h, batchId: bid });
+      else if (fn === "cancelDeposit") onActivity({ action: "cancelDeposit", amount: "", asset: asset.symbol, txHash: h, batchId: bid });
+      else if (fn === "cancelWithdraw") onActivity({ action: "cancelWithdraw", amount: "", asset: shareSym, txHash: h, batchId: bid });
+      refresh();
     } catch (e) { push(errMsg(e), "err"); }
     setBusy(false);
   }
@@ -174,7 +182,8 @@ export function Earn() {
   const push = useToast();
   const conf = useConfToken(asset.cToken);
   const market = useMarket(venue); // binds all reads/writes to the SELECTED venue's router
-  const now = useNowSec();
+  const cd = useBatchCountdown(venue.router); // §2.1 live countdown (shared hook)
+  const activity = useActivity(marketKey(asset.symbol, venue.name)); // §2.3 client-side history for this market
   const r = useReveal(`${asset.symbol} · ${venue.name}`);
   const { writeContractAsync } = useWriteContract();
   const [tab, setTab] = useState<"deposit" | "withdraw">("deposit");
@@ -185,8 +194,17 @@ export function Earn() {
   const CTOKEN = asset.cToken;
   const dec = asset.decimals;
   const shareSym = `cs${asset.underlyingSymbol}`;
-  const dispatchIn = market.dispatchableInAt(now);
-  const canExecute = dispatchIn <= 0;
+
+  // §2.2 position (positionOf, gated) — deposited / current value / earned.
+  const position = market.position;
+  const deposited = position?.deposited ?? null;
+  const currentValue = position?.currentValue ?? null;
+  const posShares = position?.shares ?? null;
+  const earned = deposited != null && currentValue != null ? currentValue - deposited : null;
+  const earnedColor = earned == null || earned === 0n ? "var(--ink)" : earned > 0n ? "var(--green)" : "var(--red)";
+  const earnedText = earned == null ? "—" : `${earned > 0n ? "+" : earned < 0n ? "-" : ""}${fmtUnits(earned < 0n ? -earned : earned, dec)} ${asset.symbol}`;
+  const earnedPct = earned != null && deposited != null && deposited > 0n ? (Number(earned) / Number(deposited)) * 100 : null;
+  const earnedPctText = earnedPct == null ? "" : `${earnedPct > 0 ? "+" : earnedPct < 0 ? "-" : ""}${Math.abs(earnedPct).toFixed(2)}%`;
 
   function refreshAll() { market.refetch(); conf.refetch(); }
 
@@ -205,12 +223,14 @@ export function Earn() {
         const h = await writeContractAsync({ address: ROUTER, abi: routerAbi, functionName: "deposit", args: [units] });
         await pub!.waitForTransactionReceipt({ hash: h });
         push("Deposit queued · claim shares after the batch executes", "ok");
+        activity.append({ action: "deposit", amount: amt, asset: asset.symbol, txHash: h, batchId: market.currentBatch.toString() });
       } else {
         const rawShares = amt.trim() === "" ? 0n : BigInt(amt.replace(/[^0-9]/g, "") || "0"); // shares are integers
         if (rawShares <= 0n) throw new Error("Enter a share amount");
         const h = await writeContractAsync({ address: ROUTER, abi: routerAbi, functionName: "requestWithdraw", args: [rawShares] });
         await pub!.waitForTransactionReceipt({ hash: h });
         push(`Withdrawal queued · claim ${asset.symbol} after the batch executes`, "ok");
+        activity.append({ action: "requestWithdraw", amount: rawShares.toString(), asset: shareSym, txHash: h, batchId: market.currentBatch.toString() });
       }
       setAmt(""); refreshAll();
     } catch (e) { push(errMsg(e), "err"); }
@@ -270,21 +290,60 @@ export function Earn() {
       {/* venue picker */}
       <VenuePicker asset={asset} selected={selectedVenue} onSelect={setSelectedVenue} />
 
-      {/* metrics */}
-      <div style={css("display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:16px;margin-top:16px")}>
+      {/* metrics — Market TVL + your position (positionOf, behind Sign-to-reveal) */}
+      <div style={css("display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-top:16px")}>
         <div style={css("background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:20px 22px;display:flex;flex-direction:column;gap:8px")}><span style={css("font:650 11px var(--display);letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)")}>Market TVL</span><span style={css("font:800 28px var(--display);color:var(--ink);font-variant-numeric:tabular-nums")}>{fmtUnits(market.totalAssets, dec, { compact: true })} <span style={css("font:600 13px var(--mono);color:var(--ink-3)")}>{asset.symbol}</span></span></div>
-        <div style={css("background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:20px 22px;display:flex;flex-direction:column;gap:8px")}>
-          <div style={css("display:flex;align-items:center;justify-content:space-between")}><span style={css("font:650 11px var(--display);letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)")}>Your position</span><button onClick={r.toggle} disabled={r.signing} style={cssm("font:650 10.5px var(--display);color:#8a6d00;background:var(--accent-soft);border:1px solid #f0e08f;border-radius:999px;padding:3px 9px;cursor:pointer", r.signing ? { opacity: 0.6, cursor: "wait" } : undefined)}>{r.label}</button></div>
-          <span style={css("font:800 28px var(--mono);color:var(--ink);font-variant-numeric:tabular-nums")}>{r.revealed ? (market.positionValue != null ? fmtUnits(market.positionValue, dec) : "—") : DOTS} <span style={css("font:600 12px var(--display);color:var(--ink-3)")}>{asset.symbol}</span></span>
-          {!r.revealed && <RevealNote r={r} />}
+
+        {/* §2.2 Your position — deposited / current value / earned, gated by Sign-to-reveal */}
+        <div style={css("background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:20px 22px;display:flex;flex-direction:column;gap:13px")}>
+          <div style={css("display:flex;align-items:center;justify-content:space-between;gap:10px")}>
+            <span style={css("font:650 11px var(--display);letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)")}>Your position</span>
+            <button onClick={r.toggle} disabled={r.signing} style={cssm("font:650 10.5px var(--display);color:#8a6d00;background:var(--accent-soft);border:1px solid #f0e08f;border-radius:999px;padding:3px 9px;cursor:pointer", r.signing ? { opacity: 0.6, cursor: "wait" } : undefined)}>{r.label}</button>
+          </div>
+          <div style={css("display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:12px")}>
+            <div style={css("display:flex;flex-direction:column;gap:3px")}>
+              <span style={css("font:600 10px var(--display);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)")}>Deposited</span>
+              <span style={css("font:800 21px var(--mono);color:var(--ink);font-variant-numeric:tabular-nums")}>{r.revealed ? (deposited != null ? fmtUnits(deposited, dec) : "—") : DOTS}</span>
+            </div>
+            <div style={css("display:flex;flex-direction:column;gap:3px")}>
+              <span style={css("font:600 10px var(--display);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)")}>Current value</span>
+              <span style={css("font:800 21px var(--mono);color:var(--ink);font-variant-numeric:tabular-nums")}>{r.revealed ? (currentValue != null ? fmtUnits(currentValue, dec) : "—") : DOTS}</span>
+            </div>
+            <div style={css("display:flex;flex-direction:column;gap:3px")}>
+              <span style={css("font:600 10px var(--display);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)")}>Earned</span>
+              <span style={cssm("font:800 21px var(--mono);font-variant-numeric:tabular-nums", { color: earnedColor })}>{r.revealed ? earnedText : DOTS}</span>
+              {r.revealed && earnedPctText && <span style={cssm("font:600 11px var(--mono)", { color: earnedColor })}>{earnedPctText}</span>}
+            </div>
+          </div>
+          <span style={css("font:400 11.5px var(--display);color:var(--ink-3)")}>Your shares: <b style={css("font-weight:700;font-family:var(--mono);color:var(--ink-2)")}>{r.revealed ? (posShares != null ? posShares.toString() : "—") : DOTS}</b> {shareSym}</span>
+          {market.pendingBatches.length > 0 && (
+            <button onClick={() => { if (typeof document !== "undefined") document.getElementById("your-batches")?.scrollIntoView({ behavior: "smooth", block: "start" }); }} style={css("align-self:flex-start;font:600 11.5px var(--display);color:#8a6d00;background:var(--accent-soft);border:1px solid #f0e08f;border-radius:999px;padding:5px 11px;cursor:pointer;text-align:left")}>
+              + {market.pendingBatches.length} pending batch{market.pendingBatches.length > 1 ? "es" : ""} — claim to add them to your position
+            </button>
+          )}
+          {r.revealed
+            ? <span style={css("font:400 10.5px/1.45 var(--display);color:var(--ink-3)")}>{REVEAL_HELP} positionOf counts only claimed shares — pending batches are listed separately.</span>
+            : <RevealNote r={r} />}
         </div>
-        <div style={css("background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:20px 22px;display:flex;flex-direction:column;gap:8px")}><span style={css("font:650 11px var(--display);letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)")}>Your shares</span><span style={css("font:800 28px var(--mono);color:var(--ink);font-variant-numeric:tabular-nums")}>{r.revealed ? (market.myShares != null ? market.myShares.toString() : "—") : DOTS} <span style={css("font:600 12px var(--display);color:var(--ink-3)")}>{shareSym}</span></span></div>
       </div>
 
-      {/* batch banner */}
-      <div style={css("display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;background:var(--accent-soft);border:1px solid #f0d97a;border-radius:16px;padding:14px 18px;margin-top:16px")}>
-        <span style={css("display:inline-flex;align-items:center;gap:10px;font:600 13px var(--display);color:#6b5a2a")}><span style={css("width:9px;height:9px;border-radius:50%;background:var(--green);animation:beat 1.7s ease-in-out infinite")} />Batch #{market.currentBatch.toString()} open · {canExecute ? "window closed — ready to execute" : `dispatch in ${mmss(dispatchIn)}`}</span>
-        <button onClick={execute} disabled={busy || !canExecute} style={cssm("border:none;border-radius:999px;padding:9px 18px;font:700 12.5px var(--display);cursor:pointer;background:var(--panel);color:#fff", (busy || !canExecute) ? { opacity: 0.5, cursor: "not-allowed" } : undefined)}>Execute batch</button>
+      {/* batch banner — §2.1 live countdown + progress + §2.4 honesty label */}
+      <div style={css("background:var(--accent-soft);border:1px solid #f0d97a;border-radius:16px;padding:14px 18px;margin-top:16px;display:flex;flex-direction:column;gap:10px")}>
+        <div style={css("display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap")}>
+          <span style={css("display:inline-flex;align-items:center;gap:10px;font:600 13px var(--display);color:#6b5a2a")}>
+            <span style={css("width:9px;height:9px;border-radius:50%;background:var(--green);animation:beat 1.7s ease-in-out infinite")} />
+            {cd.windowClosed
+              ? `Batch #${market.currentBatch.toString()} · window closed — ready to execute`
+              : <>Batch #{market.currentBatch.toString()} open · executes in <b style={css("font-weight:800;font-family:var(--mono)")}>{mmss(cd.remaining)}</b></>}
+          </span>
+          <button onClick={execute} disabled={busy || !cd.windowClosed} style={cssm("border:none;border-radius:999px;padding:9px 18px;font:700 12.5px var(--display);cursor:pointer;background:var(--panel);color:#fff", (busy || !cd.windowClosed) ? { opacity: 0.5, cursor: "not-allowed" } : undefined)}>Execute batch</button>
+        </div>
+        {!cd.windowClosed && (
+          <div style={css("height:5px;border-radius:999px;background:#f0e3bd;overflow:hidden")}>
+            <div style={cssm("height:100%;border-radius:999px;background:var(--amber);transition:width 1s linear", { width: `${Math.round(cd.progress * 100)}%` })} />
+          </div>
+        )}
+        <span style={css("font:400 11px/1.5 var(--display);color:#6b5a2a")}>60s window on this preview · production targets ~12–24h, so each batch nets enough participants for a meaningful anonymity set.</span>
       </div>
 
       <div style={css("display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;margin-top:16px")}>
@@ -308,17 +367,20 @@ export function Earn() {
         </div>
 
         {/* claimable / pending */}
-        <div style={css("background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:20px 22px;box-shadow:0 1px 2px rgba(20,18,12,.03)")}>
+        <div id="your-batches" style={css("background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:20px 22px;box-shadow:0 1px 2px rgba(20,18,12,.03)")}>
           <div style={css("display:flex;align-items:center;justify-content:space-between;margin-bottom:8px")}><span style={css("font:750 15px var(--display);color:var(--ink)")}>Your batches</span><span style={css("font:400 11.5px var(--display);color:var(--ink-3)")}>pull shares / {asset.symbol}</span></div>
           {!isConnected ? (
             <div style={css("padding:26px 4px;text-align:center;font:400 13px var(--display);color:var(--ink-3)")}>Connect your wallet to see your batches.</div>
           ) : market.pendingBatches.length === 0 ? (
             <div style={css("padding:26px 4px;text-align:center;font:400 13px var(--display);color:var(--ink-3)")}>No pending batches. Deposit or withdraw to get started.</div>
           ) : (
-            market.pendingBatches.map((b) => <BatchEntry key={b.toString()} asset={asset} router={ROUTER} batchId={b} refresh={refreshAll} />)
+            market.pendingBatches.map((b) => <BatchEntry key={b.toString()} asset={asset} router={ROUTER} batchId={b} refresh={refreshAll} onActivity={activity.append} />)
           )}
         </div>
       </div>
+
+      {/* §2.3 Activity log — client-side, honest (amounts never on-chain) */}
+      <ActivityLog items={activity.items} onClear={activity.clear} />
 
       <p style={css("margin:18px 2px 0;font:400 11.5px/1.55 var(--display);color:var(--ink-3)")}>
         {HONESTY}. Confidential vault routing into an existing public lending venue (a mock venue on testnet); not for real funds pre-audit. <a href={`${EXPLORER}/address/${ROUTER}`} target="_blank" rel="noreferrer" style={css("color:#8a6d00;text-decoration:none;font-weight:600")}>Router on Arcscan →</a>

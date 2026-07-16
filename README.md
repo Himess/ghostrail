@@ -13,8 +13,8 @@
 [![Solidity](https://img.shields.io/badge/Solidity-0.8.24-363636?style=for-the-badge&labelColor=1a1a1a)](https://soliditylang.org/)
 
 [![Live Demo](https://img.shields.io/badge/▶%20Live%20Demo-ghostrail--wine.vercel.app-2fbf7a?style=flat-square)](https://ghostrail-wine.vercel.app)
-[![Tests](https://img.shields.io/badge/forge%20test-56%20passing-2fbf7a?style=flat-square)](#-testing)
-[![Invariants](https://img.shields.io/badge/fuzz%20invariants-4%20·%20128k%20calls-brightgreen?style=flat-square)](#-testing)
+[![Tests](https://img.shields.io/badge/forge%20test-63%20passing-2fbf7a?style=flat-square)](#-testing)
+[![Invariants](https://img.shields.io/badge/fuzz%20invariants-5%20·%20128k%20calls-brightgreen?style=flat-square)](#-testing)
 [![USDC](https://img.shields.io/badge/USDC-integrated%20(real%20Arc%20testnet)-2775CA?style=flat-square)](https://faucet.circle.com)
 [![402](https://img.shields.io/badge/x402-round--trip%20live-5c9bff?style=flat-square)](#-sdk--the-402-flow)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
@@ -131,13 +131,13 @@ Share math uses a **virtual-offset** guard (`1e3 / 1`) and reads NAV from the **
 
 | Market (asset · venue) | Router | Status |
 |---|---|---|
-| **cUSDC · Morpho** | [`0xCEDA3e…d024`](https://testnet.arcscan.app/address/0xCEDA3eE062a10Dd274f4a243a0601E434063d024) | **LIVE** (real USDC) |
-| cUSDC · Aave | [`0x4BDC81…5EAd`](https://testnet.arcscan.app/address/0x4BDC81797936fccB85BA1dF03E0e314ffa7E5EAd) | simulated |
+| **cUSDC · Morpho** | [`0x568c85…4F9D`](https://testnet.arcscan.app/address/0x568c85e2956b666B6B1E82607d9CC853A1134F9D) | **LIVE** (real USDC) |
+| cUSDC · Aave | [`0xc9Bf11…567a`](https://testnet.arcscan.app/address/0xc9Bf118F3eaE3E5cdfB08F7F3f35Ac6d0B9B567a) | simulated |
 | cWETH / cWBTC / cEURC / cUSTB · Morpho + Aave | see [`arc-testnet.json`](./deployments/arc-testnet.json) | simulated |
 
-Shared: **PaymentLedger** (secondary) `0x3957406c…41E1` · **cUSDC token** `0x5d97184f…F562`. Simulated markets use mock underlyings + mock venues, clearly tagged.
+Shared: **PaymentLedger** (secondary) `0x32f2fb…888A` · **cUSDC token** `0xB0e195…d419`. Simulated markets use mock underlyings + mock venues, clearly tagged.
 
-**Live end-to-end smoke on the USDC market (real tx hashes):** shield → fund → confidential pay → deposit → executeBatch → claimShares, all on-chain — `sharesOf → 1e9`, `totalAssets → 1e6` (net crossed to the venue), solvent. Full per-market addresses + hashes in [`deployments/arc-testnet-smoke.md`](./deployments/arc-testnet-smoke.md) / [`arc-testnet.json`](./deployments/arc-testnet.json).
+**Live end-to-end smoke on the USDC market (real tx hashes):** a full round-trip — shield → deposit → executeBatch (net in) → claimShares → requestWithdraw → executeBatch (net out) → claim, all **9 txs** on-chain — with `positionOf → (1e9, 1e6, 1e6)` after the deposit and `(0, 0, 0)` after the full exit (cost basis correct, releases on exit). Full per-market addresses + hashes in [`deployments/arc-testnet-smoke.md`](./deployments/arc-testnet-smoke.md) / [`arc-testnet.json`](./deployments/arc-testnet.json).
 
 ---
 
@@ -206,7 +206,7 @@ sequenceDiagram
 ```bash
 # contracts
 forge build
-forge test                                    # 56 passing (4 stateful fuzz invariants)
+forge test                                    # 63 passing (5 stateful fuzz invariants)
 forge script script/DemoPayment.s.sol -vv     # narrated Module A story
 forge script script/DemoVault.s.sol   -vv     # narrated Module B story (netting)
 
@@ -229,8 +229,8 @@ forge script script/DeployArcTestnet.s.sol --rpc-url $ARC_TESTNET_RPC --broadcas
 
 ## ✅ Testing
 
-- **`forge test` — 56 passing, 0 failing** across 7 suites (multi-market stack: USDC 6-dec + WETH 18-dec).
-- **4 stateful fuzz invariants** at **128,000 calls each, 0 reverts**: confidential token fully backed · ledger conserved · router never insolvent · no value creation.
+- **`forge test` — 63 passing, 0 failing** across 7 suites (multi-market stack: USDC 6-dec + WETH 18-dec).
+- **5 stateful fuzz invariants** at **128,000 calls each, 0 reverts**: confidential token fully backed · ledger conserved · router never insolvent · no value creation · cost basis fully released with shares.
 - **H-1 regression:** `executeBatch` runs in **bounded (O(1)) gas** with 60 distinct depositors — the pull-based router cannot be griefed into an out-of-gas DoS.
 - Adversarial coverage: inflation/donation attack neutralized · reentrancy blocked via `MaliciousVenue` · no-privileged-path asserted · **market independence** (one market never affects another) · a global event scan proving **no confidential value appears in any event**.
 
@@ -251,7 +251,7 @@ Honest by design — a grant/positioning checkpoint, not a finished mainnet prot
 
 <div align="center">
 
-### A confidential lending layer for **Circle's Arc** — private lending first, a confidential payments module alongside
+### A confidential lending layer for **Circle's Arc** — earn venue yield, keep your position private
 
 **[🌐 ghostrail-wine.vercel.app](https://ghostrail-wine.vercel.app) · [📜 Contracts on Arcscan](https://testnet.arcscan.app) · [🔐 Arc docs](https://docs.arc.network) · [💧 Circle faucet](https://faucet.circle.com)**
 

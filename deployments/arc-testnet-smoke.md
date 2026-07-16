@@ -14,24 +14,39 @@ pull-based `ConfidentialVaultRouter`. Only **cUSDC · Morpho** is LIVE (real Arc
 
 | Market | Router | Status |
 |---|---|---|
-| **cUSDC · Morpho** | [`0xCEDA3eE062a10Dd274f4a243a0601E434063d024`](https://testnet.arcscan.app/address/0xCEDA3eE062a10Dd274f4a243a0601E434063d024) | **LIVE** (real USDC) |
-| cUSDC · Aave | [`0x4BDC81797936fccB85BA1dF03E0e314ffa7E5EAd`](https://testnet.arcscan.app/address/0x4BDC81797936fccB85BA1dF03E0e314ffa7E5EAd) | simulated |
+| **cUSDC · Morpho** | [`0x568c85e2956b666B6B1E82607d9CC853A1134F9D`](https://testnet.arcscan.app/address/0x568c85e2956b666B6B1E82607d9CC853A1134F9D) | **LIVE** (real USDC) |
+| cUSDC · Aave | [`0xc9Bf118F3eaE3E5cdfB08F7F3f35Ac6d0B9B567a`](https://testnet.arcscan.app/address/0xc9Bf118F3eaE3E5cdfB08F7F3f35Ac6d0B9B567a) | simulated |
 
 cWETH / cWBTC / cEURC / cUSTB each have Morpho + Aave routers (all simulated) — see `arc-testnet.json`.
-Shared: **cUSDC token** `0x5d97184fb174f00EFD938277D405083DCdC9F562` · **PaymentLedger** (secondary)
-`0x3957406ca80C8176C557DDCFEE83D482cFB241E1`.
+Shared: **cUSDC token** `0xB0e195dcB60f5f8179aef7c57722318CC83Bd419` · **PaymentLedger** (secondary)
+`0x32f2fb56D586606904Fc24C5f9056Aba3f28888A`.
 
-## Smoke — full pull flow on the LIVE cUSDC · Morpho market (real tx hashes)
+## Smoke — full deposit + withdraw round-trip on the LIVE cUSDC · Morpho market (real tx hashes)
 
-| Step | Tx |
-|---|---|
-| approve + shield 1 USDC | `0xb6705392c7aa9cd0482fb753a52cacca43b2441d71ec56a878d7b7379c121e80` |
-| deposit 1 USDC (router) | `0xb23daafdc5805fd9316a14745588ff9597a3e5f85f2ecb12824f93026762d308` |
-| executeBatch (net crossing) | `0x3608f84754f46ee1057749e813dee8ee1e5579b91bf42d95543b80d58b237530` |
-| claimShares (pull) | `0xf5e518b969c0efca5b5272111b8abe43f6a73390908ef91442e104d90c2c994c` |
+Every step is a separate `cast send` broadcast; all confirmed **`status: success`** on-chain (blocks
+52093069 → 52093378). Two 60s batch windows elapsed between the deposit and withdraw executions.
 
-**On-chain reads after the smoke:** `sharesOf → 1e9`, `totalAssets → 1e6` (the net crossed to the venue).
-**"USDC integrated" is true and checkable on the explorer.**
+| # | Step | Tx |
+|---|---|---|
+| 1 | approve USDC → cUSDC | [`0xf16ee430…07ea7`](https://testnet.arcscan.app/tx/0xf16ee4301caff667b99fb644e4a16b0444539ea30bab511d31ab976c34807ea7) |
+| 2 | shield 2 USDC → cUSDC | [`0x088cce9d…052c3`](https://testnet.arcscan.app/tx/0x088cce9d7f2accdb700e8017e470b643abf339045ee5ff8ca91a9609adf052c3) |
+| 3 | setOperator(router) | [`0x8de8777e…41049`](https://testnet.arcscan.app/tx/0x8de8777e3688fa33691e897babc4532c16b1645e9d8d8b48c54f11767ed41049) |
+| 4 | deposit 1 USDC (batch 2) | [`0x04ee8742…301d9d`](https://testnet.arcscan.app/tx/0x04ee8742bb3855aae39aed10f4f09710eee06210cf11342c4e41802094301d9d) |
+| 5 | executeBatch #1 — net **in** to venue | [`0x8f0131b4…db6b59`](https://testnet.arcscan.app/tx/0x8f0131b4956312aecc46dba80d81712fd7a2d4cd2472356d9698f81ecadb6b59) |
+| 6 | claimShares (pull shares) | [`0x7d3f99b6…ece5ef`](https://testnet.arcscan.app/tx/0x7d3f99b600f2e49191d8186304e67a2c56c7d28de478c1db1d32f01469ece5ef) |
+| 7 | requestWithdraw all (batch 3) | [`0x54e8a5e3…f77176`](https://testnet.arcscan.app/tx/0x54e8a5e33fde00149c28fa6ea1f4ae36690952aa649c1b24fb4d5c3a1bf77176) |
+| 8 | executeBatch #2 — net **out** of venue | [`0xe59477d2…816b7f`](https://testnet.arcscan.app/tx/0xe59477d2b10d1ead90031d0423a7cadde74a242b31ea306acc3527a71a816b7f) |
+| 9 | claim (pull cUSDC back) | [`0xf59b22da…8221c3`](https://testnet.arcscan.app/tx/0xf59b22da9b009f0a748bf4e6600918a7d12cd2c2f4afadf2e47084382d8221c3) |
+
+**Cost basis (`positionOf`) demonstrated on-chain (gated read, as the holder):**
+- After deposit: `positionOf → (shares 1e9, deposited 1e6, currentValue 1e6)` — the basis equals the 1 USDC
+  actually put in; `earned = currentValue − deposited = 0` (no yield accrued on the mock venue in this run).
+- After full exit: `positionOf → (0, 0, 0)` — the proportional basis release zeroes it exactly on a full
+  withdrawal.
+
+This proves the **display-only cost basis** is correct on-chain (deposited / value / earned) and that the
+full **GhostGate round-trip** nets *in* then *out* through the single public venue position — only the net
+crosses the boundary each batch. **"USDC integrated" is true and checkable on the explorer.**
 
 ## Honesty note
 

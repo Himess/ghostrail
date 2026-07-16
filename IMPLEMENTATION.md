@@ -208,6 +208,15 @@ own outcome at the batch snapshot price: `claimShares(batchId)` for a deposit, `
 withdrawal; `cancelDeposit`/`cancelWithdraw` back out of the still-open batch. Per-user flooring leaves
 tiny dust in-pool (safe direction). This is the standard pull-over-push hardening for batched vaults.
 
+**Cost basis (display-only).** So the UI can show *what you put in* and *what you earned* — not just a live
+value — the router keeps a confidential per-user `_costBasis`: `claimShares` adds the cUSDC deposited, and
+`claim` releases it **pro-rata** to the shares burned (reading `_shares` *before* the decrement, so a full
+exit zeroes it exactly). It is **display-only** — it never enters share math, netting, `totalShares`/
+`totalAssets`, or the solvency invariant. `positionOf(account)` (gated exactly like `sharesOf`) returns
+`(shares, deposited, currentValue)`; `earned = currentValue − deposited` is left to the caller (may be 0 or
+negative pre-yield). A stateful fuzz invariant asserts *zero shares ⇒ zero basis*, and the event scan
+confirms the basis is never emitted.
+
 **Worked example (from `DemoVault.s.sol`, real trace).** Batch 0: three deposits 10,000 / 5,000 / 1,000 →
 venue = 16,000. +5% yield → venue = 16,800. Batch 1, same window: user2 exits (shares worth 5,250) while
 user3 adds 1,000. Gross would be 5,250 out + 1,000 in; **netting crosses only the 4,250 net withdrawal** —
@@ -277,15 +286,18 @@ shares one `ConfidentialToken`; each (asset, venue) is its own `MockLendingVenue
 
 | Market (router) | Address | Status |
 |---|---|---|
-| **cUSDC · Morpho** | `0xCEDA3eE062a10Dd274f4a243a0601E434063d024` | LIVE (real USDC) |
-| cUSDC · Aave | `0x4BDC81797936fccB85BA1dF03E0e314ffa7E5EAd` | simulated |
+| **cUSDC · Morpho** | `0x568c85e2956b666B6B1E82607d9CC853A1134F9D` | LIVE (real USDC) |
+| cUSDC · Aave | `0xc9Bf118F3eaE3E5cdfB08F7F3f35Ac6d0B9B567a` | simulated |
 | cWETH / cWBTC / cEURC / cUSTB · Morpho + Aave | see `arc-testnet.json` | simulated |
-| PaymentLedger (secondary) | `0x3957406ca80C8176C557DDCFEE83D482cFB241E1` | — |
+| cUSDC token (shared) | `0xB0e195dcB60f5f8179aef7c57722318CC83Bd419` | LIVE |
+| PaymentLedger (secondary) | `0x32f2fb56D586606904Fc24C5f9056Aba3f28888A` | — |
 
-**Live smoke result:** shield 2 USDC → fund 1 → confidential pay 0.5 → deposit 1 → `executeBatch` all
-landed on-chain (8 tx hashes recorded); post-run reads: `verifyReceipt → true`, `checkSolvency →
-(1e6, 1e6)` solvent, `router.totalAssets → 1e6` (the net crossed to the public venue via GhostGate),
-`cUSDC.totalShielded → 1e6` (fully USDC-backed). **"USDC integrated" is true and checkable on the explorer.**
+**Live smoke result:** a full pull-flow round-trip on cUSDC · Morpho — shield 2 USDC → deposit 1 →
+`executeBatch` (net **in**) → `claimShares` → `requestWithdraw` all → `executeBatch` (net **out**) → `claim`
+— with all **9 tx hashes** confirmed `status: success` on-chain. `positionOf` read as the holder returned
+`(shares 1e9, deposited 1e6, currentValue 1e6)` after the deposit and `(0, 0, 0)` after the full exit,
+proving the display-only cost basis (deposited / value / earned) is correct on-chain and the basis releases
+exactly on exit. **"USDC integrated" is true and checkable on the explorer.**
 
 > **Toolchain note (honest + reusable):** the deploy ran via `forge script --broadcast`. The smoke was
 > driven with `cast send` instead, because Arc's USDC calls a native compliance precompile
@@ -323,18 +335,19 @@ activates when APS ships.* Never "privacy is live."
 
 ## 10. Test coverage
 
-`forge test` — **56 passed, 0 failed** across 7 suites — multi-market stack (USDC 6-dec + WETH 18-dec),
-incl. an **H-1 bounded-gas regression** (60 depositors → O(1) `executeBatch`) and market-independence tests
-(incl. 4 stateful fuzz invariants at 128k calls
-each; invariants re-verified against the pull-based router). Summary:
+`forge test` — **63 passed, 0 failed** across 7 suites — multi-market stack (USDC 6-dec + WETH 18-dec),
+incl. an **H-1 bounded-gas regression** (60 depositors → O(1) `executeBatch`), an **L-1 duplicate-batch
+regression**, market-independence tests, and **5 stateful fuzz invariants** at 128k calls each (re-verified
+against the pull-based router). Summary:
 
 ```
-ConfidentialUSDC.t.sol      15 passed   shield/unshield conservation, gated views, operator expiry, event hygiene, fuzz conservation
+ConfidentialToken.t.sol     15 passed   shield/unshield conservation, gated views, operator expiry, event hygiene, fuzz conservation
 PaymentLedger.t.sol         10 passed   fund→pay→verify, mismatch=false, access control, view-key grant/revoke, withdraw window, fuzz conservation, opaque event
-VaultRouter.t.sol           14 passed   deposit→execute→pull shares, yield→price, redeem, multi-user pro-rata+dust, inflation attack, cancel deposit/withdraw, gated shares, no per-user event, reentrancy, no-privileged-path, yield-monotone fuzz
+VaultRouter.t.sol           21 passed   deposit→execute→pull shares, yield→price, redeem, multi-user pro-rata+dust, inflation attack, cancel, gated shares, no per-user event, reentrancy, no-privileged-path, yield-monotone fuzz, H-1 bounded gas, cost-basis deposited/value/earned, L-1 no-duplicate regression
 Netting.t.sol                5 passed   net>0 single movement, net==0 zero movement, net<0 single withdraw+reshield, batch partitioning, net-only event
 SelectiveDisclosure.t.sol    4 passed   three-way access on every surface + global event scan (no confidential value in any topic/data)
-Invariants.t.sol             4 passed   cUSDC fully backed · ledger conserved · router never insolvent · no value creation (stateful, 128k calls, 0 reverts)
+MultiMarket.t.sol            3 passed   market independence across USDC(6-dec)/WETH(18-dec), cross-decimal share-math correctness
+Invariants.t.sol             5 passed   cUSDC fully backed · ledger conserved · router never insolvent · no value creation · cost basis released with shares (stateful, 128k calls, 0 reverts)
 ```
 
 What each proves is listed per-suite above; the highlights: conservation and solvency are **stateful fuzz
@@ -348,7 +361,7 @@ across a full cross-module lifecycle; the inflation and reentrancy attacks are e
 ```bash
 # contracts
 forge build
-forge test                                   # 49 passing
+forge test                                   # 63 passing
 forge script script/DemoPayment.s.sol -vv    # narrated Module A story (observer-vs-participant view)
 forge script script/DemoVault.s.sol   -vv    # narrated Module B story (PUBLIC vs CONFIDENTIAL labels, netting)
 
@@ -375,6 +388,11 @@ forge script script/SmokeArcTestnet.s.sol  --rpc-url $ARC_TESTNET_RPC --broadcas
 - **Timing-correlation residual** in payments beyond the single decorrelation window.
 - **Mock venue**: yield is a test hook; a real Morpho/Aave adapter is a production item.
 - **Single rolling batch window**; no partial-batch cancel on the router (funds are safe, just queued).
+- **Unbounded `_userBatches`** (review finding **L-2**): the per-user batch list that the *view* functions
+  `claimableOf`/`pendingBatchesOf` iterate can grow without bound. It is **self-inflicted only** (a user can
+  only append to their own list) and read off-chain; the L-1 `_tracked` dedupe bounds it to one entry per
+  batch touched, and `claim(batchId)`/`claimShares(batchId)` always work directly regardless of list size.
+  A permanent fix is event-based batch-id tracking off-chain (no money path is affected).
 - **APS not live**: the entire confidentiality guarantee is pending the enclave + view-key substrate.
 
 ---
@@ -428,9 +446,16 @@ Choices made where the spec left room:
     executable in forge's local simulation — a real-network property, not a contract change.
 11. **Router remediated to pull-based + redeployed.** The original push-based `executeBatch` looped over
     all batch participants (unbounded-loop DoS). It was rewritten to O(1) snapshot-and-net with per-user
-    `claimShares`/`claim` pulls + `cancelDeposit`/`cancelWithdraw`, re-tested (52 green, invariants
-    re-verified), and redeployed to Arc (`0x540E…29E3`, batchWindow 60s). cUSDC/ledger/venue were left in
+    `claimShares`/`claim` pulls + `cancelDeposit`/`cancelWithdraw`, re-tested (all green, invariants
+    re-verified), and redeployed to Arc (batchWindow 60s; addresses superseded by entry 12). cUSDC/ledger/venue were left in
     place; only the router address changed. The frontend binds to this pull-based interface.
+12. **Cost-basis + `positionOf` added (display-only); L-1 fixed; redeployed.** The router now tracks a
+    confidential per-user `_costBasis` so the UI can show deposited / value / earned — it never touches share
+    math or solvency (a fuzz invariant + the event scan enforce this). Review finding **L-1** (duplicate
+    `_userBatches` push across deposit→cancel→deposit) is fixed with a `_tracked` flag + regression test.
+    Adding state changed the storage layout, so **all 10 (asset, venue) markets were redeployed** to Arc
+    (live cUSDC·Morpho router `0x568c85…4F9D`, batchWindow 60s); **63 tests green**, fresh full round-trip
+    smoke (deposit → execute → claim → withdraw → execute → claim) in `deployments/arc-testnet-smoke.md`.
 
 *Built in one pass: interfaces + mocks → ConfidentialUSDC → PaymentLedger → VaultRouter → tests (49 green)
 → demo scripts (both run) → SDK (402 round-trip live) → Arc deploy/smoke scripts → this report.*

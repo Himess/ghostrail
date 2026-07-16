@@ -1,6 +1,6 @@
 "use client";
 import { css, cssm } from "@/lib/css";
-import { useConfToken, useLedger, useMarket, useAllMarkets, useNowSec } from "@/lib/hooks";
+import { useConfToken, useLedger, useMarket, useAllMarkets, useBatchCountdown } from "@/lib/hooks";
 import { compact, fmtUnits, mmss } from "@/lib/format";
 import { TokenIcon } from "@/components/TokenIcon";
 import { ASSET_LIST } from "@/lib/markets";
@@ -33,8 +33,7 @@ export function Status() {
   const ledger = useLedger();
   const market = useMarket(USDC_VENUE);
   const { bySymbol } = useAllMarkets();
-  const now = useNowSec();
-  const dispatchIn = market.dispatchableInAt(now);
+  const cd = useBatchCountdown(USDC_VENUE.router); // §2.1 same shared live countdown as Earn / Dashboard
   const routerSolvent = market.solvency ? market.solvency.backingAssets >= (market.totalShares > 0n ? market.totalAssets : 0n) : true;
   const ledgerSolvent = ledger.solvency ? ledger.solvency.backing >= ledger.solvency.internalSum : true;
 
@@ -53,7 +52,7 @@ export function Status() {
         <Card>
           <Label t="GhostGate batch · USDC" />
           <div style={css("display:flex;align-items:baseline;gap:8px")}><span style={css("font:800 30px var(--display);color:var(--ink);font-variant-numeric:tabular-nums")}>#{market.currentBatch.toString()}</span></div>
-          <span style={css("font:400 12.5px var(--display);color:var(--ink-3)")}>dispatch in {mmss(dispatchIn)} · window {market.batchWindow}s</span>
+          <span style={css("font:400 12.5px var(--display);color:var(--ink-3)")}>{cd.windowClosed ? "window closed — ready to execute" : `dispatch in ${mmss(cd.remaining)}`} · window {cd.batchWindow}s</span>
         </Card>
         <Card>
           <Label t="cUSDC supply" />
@@ -99,7 +98,7 @@ export function Status() {
           <div style={css("display:flex;flex-direction:column;gap:2px")}><h3 style={css("margin:0;font:750 17px var(--display);color:var(--ink)")}>Batch pipeline</h3><span style={css("font:400 12.5px var(--display);color:var(--ink-3)")}>how a market batch settles</span></div>
           <div style={css("display:flex;flex-direction:column;gap:15px")}>
             <Node state="done" label="Queue" sub="deposits & withdrawals join the open batch (confidential)" />
-            <Node state={dispatchIn > 0 ? "active" : "done"} label="Window" sub={dispatchIn > 0 ? `open · dispatch in ${mmss(dispatchIn)}` : "closed · ready to execute"} />
+            <Node state={!cd.windowClosed ? "active" : "done"} label="Window" sub={!cd.windowClosed ? `open · dispatch in ${mmss(cd.remaining)}` : "closed · ready to execute"} />
             <Node state="todo" label="Execute → net crosses" sub="permissionless keeper; only the NET touches the public venue" />
             <Node state="todo" label="Pull" sub="users claim their own shares / underlying" />
           </div>

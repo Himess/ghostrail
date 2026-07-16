@@ -56,6 +56,10 @@ contract GhostRailHandler is Test {
         return actors[seed % actors.length];
     }
 
+    function actorCount() external view returns (uint256) {
+        return actors.length;
+    }
+
     function _cBalOf(address a) internal returns (uint256) {
         vm.prank(a);
         return cusdc.confidentialBalanceOf(a);
@@ -179,5 +183,17 @@ contract InvariantsTest is StdInvariant, Test {
     ///         Backing (venue) only grows via deposits and yield, so it bounds all redeemable value.
     function invariant_noValueCreation() public view {
         assertLe(router.previewRedeem(router.totalShares()), venue.balanceOf(address(router)), "value created");
+    }
+
+    /// @notice Cost basis is DISPLAY-ONLY and fully released: a holder with zero shares has zero deposited
+    ///         basis, so "earned" never strands a phantom cost. Read via the auditor (positionOf is gated).
+    function invariant_basisReleasedWithShares() public {
+        uint256 n = handler.actorCount();
+        for (uint256 i; i < n; ++i) {
+            address a = handler.actors(i);
+            vm.prank(auditor);
+            (uint256 shares, uint256 deposited,) = router.positionOf(a);
+            if (shares == 0) assertEq(deposited, 0, "zero shares must imply zero cost basis");
+        }
     }
 }

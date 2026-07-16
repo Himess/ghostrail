@@ -1,7 +1,7 @@
 "use client";
 import { css, cssm } from "@/lib/css";
 import { useNav } from "@/lib/nav";
-import { useConfToken, useLedger, useMarket, useAllMarkets, useNowSec } from "@/lib/hooks";
+import { useConfToken, useLedger, useMarket, useAllMarkets, useBatchCountdown } from "@/lib/hooks";
 import { compact, fmtUnits, mmss } from "@/lib/format";
 import { WhatsPrivate } from "@/components/Privacy";
 import { TokenIcon } from "@/components/TokenIcon";
@@ -26,8 +26,7 @@ export function Dashboard() {
   const market = useMarket(USDC_ASSET.venues[0]);
   const ledger = useLedger();
   const { bySymbol } = useAllMarkets();
-  const now = useNowSec();
-  const dispatchIn = market.dispatchableInAt(now);
+  const cd = useBatchCountdown(USDC_ASSET.venues[0].router); // §2.1 same shared live countdown as Earn
   const solvent = ledger.solvency ? ledger.solvency.backing >= ledger.solvency.internalSum : true;
 
   // TVL across assets normalized to whole underlying units (assets have different decimals + underlyings).
@@ -75,7 +74,12 @@ export function Dashboard() {
             <span style={css("width:10px;height:10px;border-radius:50%;background:var(--green);animation:beat 1.7s ease-in-out infinite")} />
             <span style={css("font:750 26px var(--display);letter-spacing:-.02em;color:var(--ink);line-height:1")}>#{market.currentBatch.toString()}</span>
           </div>
-          <span style={css("font:400 12.5px var(--display);color:var(--ink-3)")}>batch open · dispatch in {mmss(dispatchIn)}</span>
+          <span style={css("font:400 12.5px var(--display);color:var(--ink-3)")}>{cd.windowClosed ? "window closed — ready to execute" : `batch open · executes in ${mmss(cd.remaining)}`}</span>
+          {!cd.windowClosed && (
+            <div style={css("height:4px;border-radius:999px;background:var(--line);overflow:hidden")}>
+              <div style={cssm("height:100%;border-radius:999px;background:var(--green);transition:width 1s linear", { width: `${Math.round(cd.progress * 100)}%` })} />
+            </div>
+          )}
         </Card>
         <Card>
           <Label t="Payment ledger" />

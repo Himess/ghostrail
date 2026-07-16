@@ -11,6 +11,7 @@ import { DOTS, fmtUnits, toUnits, errMsg } from "@/lib/format";
 import { assetMeta, ASSET_LIST, type AssetMeta } from "@/lib/markets";
 import { type Hex } from "@/lib/addresses";
 import { ctokenAbi, routerAbi, erc20Abi } from "@/lib/abis";
+import { useActivity, marketKey } from "@/lib/activity";
 
 function Row({ token, name, sub, value, mono = true }: { token: string; name: string; sub: string; value: string; mono?: boolean }) {
   return (
@@ -52,6 +53,7 @@ export function Balances() {
   const pub = usePublicClient();
   const conf = useConfToken(meta.cToken);
   const { writeContractAsync } = useWriteContract();
+  const activity = useActivity(marketKey(meta.symbol, meta.venues[0].name)); // asset-level actions log to the primary venue
   const r = useReveal("all confidential balances");
   const [amt, setAmt] = useState("");
   const [mode, setMode] = useState<"shield" | "unshield">("shield");
@@ -84,10 +86,12 @@ export function Balances() {
         const h = await writeContractAsync({ address: meta.cToken, abi: ctokenAbi, functionName: "shield", args: [units] });
         await pub!.waitForTransactionReceipt({ hash: h });
         push(`Shielded ${amt} ${meta.underlyingSymbol} → ${meta.symbol}`, "ok");
+        activity.append({ action: "shield", amount: amt, asset: meta.symbol, txHash: h });
       } else {
         const h = await writeContractAsync({ address: meta.cToken, abi: ctokenAbi, functionName: "unshield", args: [units] });
         await pub!.waitForTransactionReceipt({ hash: h });
         push(`Unshielded ${amt} ${meta.symbol} → ${meta.underlyingSymbol} · now public`, "ok");
+        activity.append({ action: "unshield", amount: amt, asset: meta.symbol, txHash: h });
       }
       setAmt(""); conf.refetch(); refetchUnderlying();
     } catch (e) { push(errMsg(e), "err"); }

@@ -264,4 +264,107 @@ contract VaultRouterTest is TestBase {
         assertGe(p1, p0, "yield never lowers redeem value");
         assertGe(p2, p1, "still monotone");
     }
+
+    // ============================================================================================
+    // Position / cost-basis (display-only accounting; never enters share math, netting, solvency)
+    // ============================================================================================
+
+    function _positionOf(address who) internal returns (uint256 shares, uint256 deposited, uint256 currentValue) {
+        vm.prank(who);
+        return router.positionOf(who);
+    }
+
+    // deposited basis == what was put in; value ~= deposit before any yield
+    function test_basis_after_claim_equals_deposit() public {
+        _depositClaim(alice, 1_000e6);
+        (uint256 sh, uint256 dep, uint256 val) = _positionOf(alice);
+        assertGt(sh, 0, "has shares");
+        assertEq(dep, 1_000e6, "deposited == cUSDC put in");
+        assertApproxEqAbs(val, 1_000e6, 2, "value ~= deposit pre-yield");
+    }
+
+    // yield lifts currentValue (earned > 0) while the deposited basis stays put
+    function test_earned_after_yield_leaves_basis() public {
+        _depositClaim(alice, 1_000e6);
+        venue.accrueYield(1000); // +10%
+        (, uint256 dep, uint256 val) = _positionOf(alice);
+        assertEq(dep, 1_000e6, "yield does not change deposited basis");
+        assertGt(val, dep, "earned = value - deposited > 0");
+        assertApproxEqAbs(val, 1_100e6, 3, "~+10% reflected in value");
+    }
+
+    // partial withdraw releases basis in proportion to the shares burned
+    function test_partial_withdraw_basis_proportional() public {
+        _depositClaim(alice, 1_000e6);
+        uint256 sh = _sharesOf(alice);
+        vm.prank(alice);
+        router.requestWithdraw(sh / 2);
+        uint256 b = _execute();
+        vm.prank(alice);
+        router.claim(b);
+        (uint256 shAfter, uint256 dep,) = _positionOf(alice);
+        assertApproxEqAbs(dep, 500e6, 1, "basis released ~proportionally (floor)");
+        assertEq(shAfter, sh - sh / 2, "shares halved");
+    }
+
+    // full withdraw zeroes the basis exactly
+    function test_full_withdraw_zeroes_basis() public {
+        _depositClaim(alice, 1_000e6);
+        uint256 sh = _sharesOf(alice);
+        vm.prank(alice);
+        router.requestWithdraw(sh);
+        uint256 b = _execute();
+        vm.prank(alice);
+        router.claim(b);
+        (uint256 shAfter, uint256 dep,) = _positionOf(alice);
+        assertEq(dep, 0, "basis zeroed exactly on full exit");
+        assertEq(shAfter, 0, "no shares left");
+    }
+
+    // positionOf is gated exactly like sharesOf (holder + auditor only)
+    function test_positionOf_is_gated() public {
+        _depositClaim(alice, 1_000e6);
+        vm.prank(auditor);
+        (, uint256 dep,) = router.positionOf(alice);
+        assertEq(dep, 1_000e6, "auditor may read");
+        vm.prank(stranger);
+        vm.expectRevert(ConfidentialVaultRouter.NotAuthorizedToView.selector);
+        router.positionOf(alice);
+    }
+
+    // L-1 regression: cancel/re-enter the same batch must not duplicate it in the user's batch list,
+    // and must not double-count claimableOf.
+    function test_L1_no_duplicate_batch_tracking() public {
+        // Part A — deposit -> cancel -> deposit into the SAME open batch tracks it exactly once.
+        uint256 b = router.currentBatch();
+        _deposit(alice, 1_000e6);
+        vm.prank(alice);
+        router.cancelDeposit();
+        _deposit(alice, 1_000e6);
+        vm.prank(alice);
+        uint256[] memory pend = router.pendingBatchesOf(alice);
+        assertEq(pend.length, 1, "batch tracked once, not duplicated");
+        assertEq(pend[0], b, "the open batch");
+
+        // realize the position so alice holds shares
+        uint256 b0 = _execute();
+        _claimShares(alice, b0);
+        uint256 sh = _sharesOf(alice);
+
+        // Part B — requestWithdraw -> cancelWithdraw -> requestWithdraw must not double-count claimable.
+        vm.prank(alice);
+        router.requestWithdraw(sh);
+        vm.prank(alice);
+        router.cancelWithdraw();
+        vm.prank(alice);
+        router.requestWithdraw(sh);
+        uint256 b1 = _execute();
+
+        vm.prank(alice);
+        uint256 claimable = router.claimableOf(alice);
+        vm.prank(alice);
+        uint256 single = router.previewClaim(b1, alice);
+        assertEq(claimable, single, "claimableOf equals ONE withdrawal (not double-counted)");
+        assertGt(claimable, 0, "has a claimable withdrawal");
+    }
 }

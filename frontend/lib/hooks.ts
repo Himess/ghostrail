@@ -27,6 +27,11 @@ export function useNowSec(): number {
   return now;
 }
 
+// The countdown math lives in ONE place — seconds remaining until a batch window closes.
+// Shared by useMarket.dispatchableInAt and useBatchCountdown so there is no duplicated arithmetic.
+export const remainingSec = (batchOpenedAt: number, batchWindow: number, now: number): number =>
+  Math.max(0, batchOpenedAt + batchWindow - now);
+
 // ---- Confidential token (the shielded wrapper over a market's underlying) ----
 // Pass the market's cToken address. `myBalance` is gated (issued with the connected wallet as account).
 export function useConfToken(cTokenAddr: Hex) {
@@ -109,8 +114,15 @@ export function useMarket(m: VenueAddrs) {
     ...router, functionName: "pendingBatchesOf", args: [address as Hex],
     account: address, query: { enabled: !!address, refetchInterval: 10000 },
   });
+  // Gated position read (issued as the connected wallet): claimed shares, cost basis deposited, and the
+  // current redeemable value. Reverts for a stranger (NotAuthorizedToView) — only the owner reads their own.
+  const { data: myPosition, refetch: refetchPosition } = useReadContract({
+    ...router, functionName: "positionOf", args: [address as Hex],
+    account: address, query: { enabled: !!address, refetchInterval: 12000 },
+  });
 
   const shares = (myShares as bigint | undefined) ?? null;
+  const pos = myPosition as readonly [bigint, bigint, bigint] | undefined;
   // Share price (6-dec ratio) + position value derived from the public aggregates with the router's virtual
   // offset (VS=1e3, VA=1) — no reverting previewRedeem call on an empty vault.
   const sharePrice6 = totalShares > 0n ? (totalAssets * 1_000_000n) / totalShares : 1_000_000n;
@@ -125,10 +137,41 @@ export function useMarket(m: VenueAddrs) {
     myClaimable: (myClaimable as bigint | undefined) ?? null,
     pendingBatches: ((pendingBatches as readonly bigint[] | undefined) ?? []) as readonly bigint[],
     positionValue,
+    // positionOf(account): shares held, cUSDC deposited (cost basis), and current redeemable value. `earned`
+    // is left to the caller (currentValue − deposited) so a negative renders safely. Null until the read lands.
+    position: pos ? { shares: pos[0], deposited: pos[1], currentValue: pos[2] } : null,
     // dispatchableIn = max(0, batchOpenedAt + batchWindow − now); callers pass their ticking clock.
-    dispatchableInAt: (now: number) => Math.max(0, batchOpenedAt + batchWindow - now),
-    refetch: () => { refetchAgg(); refetchShares(); refetchClaimable(); refetchPending(); },
+    dispatchableInAt: (now: number) => remainingSec(batchOpenedAt, batchWindow, now),
+    refetch: () => { refetchAgg(); refetchShares(); refetchClaimable(); refetchPending(); refetchPosition(); },
   };
+}
+
+// ---- §2.1 Live batch countdown — ONE shared hook (Earn + Dashboard + Status), no duplicated math ----
+// Reads batchOpenedAt + batchWindow (public uints on the router) and re-derives every second off the shared
+// 1s clock (useNowSec — its useEffect interval is cleared on unmount). remaining = max(0, opened + window − now).
+export type BatchCountdown = {
+  remaining: number;      // seconds until the window closes (0 once closed)
+  windowClosed: boolean;  // true only once we know the window AND it has elapsed
+  progress: number;       // 0→1, fraction of the window elapsed (for a progress bar)
+  batchWindow: number;    // the configured window length in seconds
+  batchOpenedAt: number;
+};
+export function useBatchCountdown(router: Hex): BatchCountdown {
+  const now = useNowSec();
+  const routerC = { address: router, abi: routerAbi } as const;
+  const { data } = useReadContracts({
+    contracts: [
+      { ...routerC, functionName: "batchOpenedAt" },
+      { ...routerC, functionName: "batchWindow" },
+    ],
+    query: { refetchInterval: 10000 },
+  });
+  const batchOpenedAt = Number((data?.[0]?.result as bigint | undefined) ?? 0n);
+  const batchWindow = Number((data?.[1]?.result as bigint | undefined) ?? 0n);
+  const remaining = remainingSec(batchOpenedAt, batchWindow, now);
+  const windowClosed = batchWindow > 0 && remaining <= 0;
+  const progress = batchWindow > 0 ? Math.min(1, Math.max(0, (batchWindow - remaining) / batchWindow)) : 0;
+  return { remaining, windowClosed, progress, batchWindow, batchOpenedAt };
 }
 
 // ---- Every asset at once (Markets grid / Dashboard / Status), keyed by asset symbol ----

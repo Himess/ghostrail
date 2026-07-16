@@ -10,6 +10,7 @@ import { fmtUnits, toUnits, errMsg } from "@/lib/format";
 import { FAUCET, type Hex } from "@/lib/addresses";
 import { assetMeta, ASSET_LIST } from "@/lib/markets";
 import { ctokenAbi, erc20Abi } from "@/lib/abis";
+import { useActivity, marketKey } from "@/lib/activity";
 
 function StepNum({ n }: { n: number }) {
   return <span style={css("width:30px;height:30px;flex:none;border-radius:50%;background:var(--panel);color:#ffd208;display:flex;align-items:center;justify-content:center;font:800 14px var(--mono)")}>{n}</span>;
@@ -29,6 +30,7 @@ export function Faucet() {
   const pub = usePublicClient();
   const conf = useConfToken(meta.cToken);
   const { writeContractAsync } = useWriteContract();
+  const activity = useActivity(marketKey(meta.symbol, meta.venues[0].name)); // asset-level shield logs to the primary venue
   const [mintAmt, setMintAmt] = useState("1000");
   const [amt, setAmt] = useState("100");
   const [busy, setBusy] = useState<null | "mint" | "shield">(null);
@@ -67,6 +69,7 @@ export function Faucet() {
       const sh = await writeContractAsync({ address: meta.cToken, abi: ctokenAbi, functionName: "shield", args: [units] });
       await pub!.waitForTransactionReceipt({ hash: sh });
       push(`Shielded ${amt} ${meta.underlyingSymbol} → ${meta.symbol} · now private`, "ok");
+      activity.append({ action: "shield", amount: amt, asset: meta.symbol, txHash: sh });
       conf.refetch(); refetchUnderlying();
     } catch (e) { push(errMsg(e), "err"); }
     setBusy(null);

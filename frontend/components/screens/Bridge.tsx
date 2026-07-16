@@ -7,9 +7,10 @@ import { useNav } from "@/lib/nav";
 import { useToast } from "@/components/Toast";
 import { TokenIcon } from "@/components/TokenIcon";
 import { fmtUnits, errMsg } from "@/lib/format";
-import { CHAIN_ID, EXPLORER, type Hex } from "@/lib/addresses";
+import { CHAIN_ID, EXPLORER, USDC_ASSET, type Hex } from "@/lib/addresses";
 import { erc20Abi } from "@/lib/abis";
 import { bridgeKit, DEST, SOURCE_CHAINS, CCTP_STEPS, type SourceChain, type CctpStepKey } from "@/lib/cctp";
+import { useActivity, marketKey } from "@/lib/activity";
 
 type StepState = { state: "idle" | "pending" | "success" | "error"; txHash?: string; explorerUrl?: string };
 type Steps = Record<CctpStepKey, StepState>;
@@ -24,6 +25,7 @@ export function Bridge() {
   const { switchChainAsync } = useSwitchChain();
   const { go } = useNav();
   const push = useToast();
+  const activity = useActivity(marketKey(USDC_ASSET.symbol, USDC_ASSET.venues[0].name)); // bridge-ins log to the live USDC market
 
   const [source, setSource] = useState<SourceChain>(SOURCE_CHAINS[0]);
   const [amt, setAmt] = useState("1");
@@ -82,6 +84,8 @@ export function Bridge() {
       if (result.state === "success") {
         setDone(true);
         push(`Bridged ${amt} USDC to Arc`, "ok");
+        const mintStep = (result.steps ?? []).find((s) => s.name === "mint");
+        activity.append({ action: "bridge", amount: amt, asset: "USDC", txHash: mintStep?.txHash });
         refetchArc();
       } else {
         const failed = (result.steps ?? []).find((s) => s.state === "error");
