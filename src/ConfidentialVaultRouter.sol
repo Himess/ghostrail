@@ -65,6 +65,7 @@ contract ConfidentialVaultRouter is ReentrancyGuard {
     mapping(uint256 => mapping(address => uint256)) private _pendingDeposit; // batch => user => cUSDC
     mapping(uint256 => mapping(address => uint256)) private _pendingWithdraw; // batch => user => shares
     mapping(address => uint256[]) private _userBatches; // batches a user has (had) pending entries in
+    mapping(uint256 => mapping(address => bool)) private _tracked; // (batch,user) already in _userBatches — dedupe
 
     // APS-SWAP: events carry only aggregates / net flow — never a per-user amount.
     event DepositQueued(address indexed account, uint256 indexed batchId); // NO amount
@@ -321,7 +322,13 @@ contract ConfidentialVaultRouter is ReentrancyGuard {
     // ============================================================================================
 
     function _track(uint256 b, address user) private {
-        if (_pendingDeposit[b][user] == 0 && _pendingWithdraw[b][user] == 0) _userBatches[user].push(b);
+        // Push each (batch, user) at most ONCE. Guarding on live pending amounts alone double-pushes across a
+        // deposit → cancel → deposit cycle (both pendings read 0 again), inflating _userBatches so the
+        // claimableOf / pendingBatchesOf views double-count. A permanent tracked-flag dedupes regardless of cancels.
+        if (!_tracked[b][user]) {
+            _tracked[b][user] = true;
+            _userBatches[user].push(b);
+        }
     }
 
     function _requireCanView(address account) private view {

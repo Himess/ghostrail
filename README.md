@@ -35,7 +35,7 @@
 
 - [Why GhostRail](#-why-ghostrail)
 - [Architecture — Arc is a dual EVM](#-architecture--arc-is-a-dual-evm)
-- [The two modules](#-the-two-modules)
+- [The product](#-the-product)
 - [Under the hood](#-under-the-hood)
 - [Deployed contracts (Arc testnet)](#-deployed-contracts-arc-testnet)
 - [SDK & the 402 flow](#-sdk--the-402-flow)
@@ -206,7 +206,7 @@ sequenceDiagram
 ```bash
 # contracts
 forge build
-forge test                                    # 52 passing (4 stateful fuzz invariants)
+forge test                                    # 56 passing (4 stateful fuzz invariants)
 forge script script/DemoPayment.s.sol -vv     # narrated Module A story
 forge script script/DemoVault.s.sol   -vv     # narrated Module B story (netting)
 
@@ -251,7 +251,7 @@ Honest by design — a grant/positioning checkpoint, not a finished mainnet prot
 
 <div align="center">
 
-### A confidential-finance layer for **Circle's Arc** — payments + private lending, one SDK
+### A confidential lending layer for **Circle's Arc** — private lending first, a confidential payments module alongside
 
 **[🌐 ghostrail-wine.vercel.app](https://ghostrail-wine.vercel.app) · [📜 Contracts on Arcscan](https://testnet.arcscan.app) · [🔐 Arc docs](https://docs.arc.network) · [💧 Circle faucet](https://faucet.circle.com)**
 
