@@ -13,14 +13,14 @@
 [![Solidity](https://img.shields.io/badge/Solidity-0.8.24-363636?style=for-the-badge&labelColor=1a1a1a)](https://soliditylang.org/)
 
 [![Website](https://img.shields.io/badge/🌐%20Website-ghostrail--arc.vercel.app-FFD208?style=flat-square&labelColor=1a1a1a)](https://ghostrail-arc.vercel.app)
-[![App](https://img.shields.io/badge/▶%20App-ghostrail--wine.vercel.app-2fbf7a?style=flat-square)](https://ghostrail-wine.vercel.app)
+[![App](https://img.shields.io/badge/▶%20App-ghostrail--app.vercel.app-2fbf7a?style=flat-square)](https://ghostrail-app.vercel.app)
 [![Tests](https://img.shields.io/badge/forge%20test-63%20passing-2fbf7a?style=flat-square)](#-testing)
 [![Invariants](https://img.shields.io/badge/fuzz%20invariants-5%20·%20128k%20calls-brightgreen?style=flat-square)](#-testing)
 [![USDC](https://img.shields.io/badge/USDC-integrated%20(real%20Arc%20testnet)-2775CA?style=flat-square)](https://faucet.circle.com)
 [![402](https://img.shields.io/badge/x402-round--trip%20live-5c9bff?style=flat-square)](#-sdk--the-402-flow)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
 
-**[🌐 Website](https://ghostrail-arc.vercel.app) · [📖 Docs](https://ghostrail-arc.vercel.app/docs) · [▶ App](https://ghostrail-wine.vercel.app) · [📜 Deployed contracts](#-deployed-contracts-arc-testnet) · [🔒 Privacy model](#-whats-private-vs-public)**
+**[🌐 Website](https://ghostrail-arc.vercel.app) · [📖 Docs](https://ghostrail-arc.vercel.app/docs) · [▶ App](https://ghostrail-app.vercel.app) · [📜 Deployed contracts](#-deployed-contracts-arc-testnet) · [🔒 Privacy model](#-whats-private-vs-public)**
 
 </div>
 
@@ -254,7 +254,7 @@ Honest by design — a grant/positioning checkpoint, not a finished mainnet prot
 
 ### A confidential lending layer for **Circle's Arc** — earn venue yield, keep your position private
 
-**[🌐 ghostrail-wine.vercel.app](https://ghostrail-wine.vercel.app) · [📜 Contracts on Arcscan](https://testnet.arcscan.app) · [🔐 Arc docs](https://docs.arc.network) · [💧 Circle faucet](https://faucet.circle.com)**
+**[🌐 ghostrail-app.vercel.app](https://ghostrail-app.vercel.app) · [📜 Contracts on Arcscan](https://testnet.arcscan.app) · [🔐 Arc docs](https://docs.arc.network) · [💧 Circle faucet](https://faucet.circle.com)**
 
 *Operational privacy for the USDC-native agent economy — architected for APS, honest about the boundary.*
 
