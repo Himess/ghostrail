@@ -12,14 +12,15 @@
 [![Network](https://img.shields.io/badge/Arc-Testnet%205042002-2775CA?style=for-the-badge&labelColor=1a1a1a)](https://testnet.arcscan.app)
 [![Solidity](https://img.shields.io/badge/Solidity-0.8.24-363636?style=for-the-badge&labelColor=1a1a1a)](https://soliditylang.org/)
 
-[![Live Demo](https://img.shields.io/badge/▶%20Live%20Demo-ghostrail--wine.vercel.app-2fbf7a?style=flat-square)](https://ghostrail-wine.vercel.app)
+[![Website](https://img.shields.io/badge/🌐%20Website-ghostrail--arc.vercel.app-FFD208?style=flat-square&labelColor=1a1a1a)](https://ghostrail-arc.vercel.app)
+[![App](https://img.shields.io/badge/▶%20App-ghostrail--wine.vercel.app-2fbf7a?style=flat-square)](https://ghostrail-wine.vercel.app)
 [![Tests](https://img.shields.io/badge/forge%20test-63%20passing-2fbf7a?style=flat-square)](#-testing)
 [![Invariants](https://img.shields.io/badge/fuzz%20invariants-5%20·%20128k%20calls-brightgreen?style=flat-square)](#-testing)
 [![USDC](https://img.shields.io/badge/USDC-integrated%20(real%20Arc%20testnet)-2775CA?style=flat-square)](https://faucet.circle.com)
 [![402](https://img.shields.io/badge/x402-round--trip%20live-5c9bff?style=flat-square)](#-sdk--the-402-flow)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
 
-**[🌐 Live Demo](https://ghostrail-wine.vercel.app) · [📜 Deployed contracts](#-deployed-contracts-arc-testnet) · [🧠 How it works](#-under-the-hood) · [🔒 Privacy model](#-whats-private-vs-public) · [🛰 Roadmap to APS](#-limitations--roadmap)**
+**[🌐 Website](https://ghostrail-arc.vercel.app) · [📖 Docs](https://ghostrail-arc.vercel.app/docs) · [▶ App](https://ghostrail-wine.vercel.app) · [📜 Deployed contracts](#-deployed-contracts-arc-testnet) · [🔒 Privacy model](#-whats-private-vs-public)**
 
 </div>
 
