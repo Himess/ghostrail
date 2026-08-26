@@ -7,7 +7,7 @@
 // hardcode them. If you ever hand-roll the flow, VERIFY the config against developers.circle.com (CCTP)
 // and docs.arc.network/references — one older source listed Arc's CCTP domain as 7 rather than 26.
 
-import { BridgeKit, ArcTestnet, BaseSepolia, EthereumSepolia, ArbitrumSepolia } from "@circle-fin/bridge-kit";
+import { BridgeKit, ArcTestnet, BaseSepolia, EthereumSepolia, ArbitrumSepolia, type ChainDefinition } from "@circle-fin/bridge-kit";
 
 export const bridgeKit = new BridgeKit();
 
@@ -17,7 +17,7 @@ export const DEST = ArcTestnet;
 export type SourceChain = {
   key: string;
   label: string;
-  chain: typeof BaseSepolia;
+  chain: ChainDefinition;
   chainId: number;
   explorer: string;
   logoTint: string;

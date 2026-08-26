@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAccount, useReadContract, useSwitchChain } from "wagmi";
 import { createViemAdapterFromProvider } from "@circle-fin/adapter-viem-v2";
+import type { BridgeResult } from "@circle-fin/bridge-kit";
 import { css, cssm } from "@/lib/css";
 import { useNav } from "@/lib/nav";
 import { useToast } from "@/components/Toast";
@@ -69,12 +70,11 @@ export function Bridge() {
       const adapter = await createViemAdapterFromProvider({ provider: provider as never });
       // mark approve active immediately for responsiveness
       setSteps((s) => ({ ...s, approve: { state: "pending" } }));
-      const result: { state?: string; steps?: { name: string; state: string; error?: string; txHash?: string; explorerUrl?: string }[] } =
-        await bridgeKit.bridge({
-          from: { adapter, chain: source.chain },
-          to: { adapter, chain: DEST, useForwarder: true },
-          amount: amt,
-        });
+      const result: BridgeResult = await bridgeKit.bridge({
+        from: { adapter, chain: source.chain },
+        to: { adapter, chain: DEST, useForwarder: true },
+        amount: amt,
+      });
       // reconcile with the final result
       (result.steps ?? []).forEach((st) => {
         if (CCTP_STEPS.some((c) => c.key === st.name)) {
@@ -89,7 +89,7 @@ export function Bridge() {
         refetchArc();
       } else {
         const failed = (result.steps ?? []).find((s) => s.state === "error");
-        setErr(failed?.error || "Bridge did not complete");
+        setErr(failed?.errorMessage || (failed?.error ? errMsg(failed.error) : "Bridge did not complete"));
       }
     } catch (e) {
       setErr(errMsg(e));
